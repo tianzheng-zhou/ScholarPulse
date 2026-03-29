@@ -1,0 +1,37 @@
+research_description: test
+keywords:
+- TFT
+sources:
+  semantic_scholar:
+    enabled: true
+  arxiv:
+    enabled: true
+    categories:
+    - cs.ET
+  openalex:
+    enabled: false
+  ieee_xplore:
+    enabled: false
+  crossref:
+    enabled: false
+  rss:
+    enabled: false
+    feeds:
+    - name: Nature Electronics
+      url: https://www.nature.com/natelectron.rss
+    - name: IEEE Electron Device Letters
+      url: ''
+    - name: Advanced Electronic Materials
+      url: ''
+llm:
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen3.5-plus
+  max_concurrent: 5
+  enable_thinking: false
+scheduler:
+  enabled: false
+  cron: 0 8 * * *
+  fetch_days: 3
+server:
+  host: 127.0.0.1
+  port: 15471

@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}{{ paper.title if paper else '未找到' }} — ScholarPulse{% endblock %}
+
+{% block content %}
+{% if paper %}
+<div class="mb-4">
+    <a href="/" class="text-sm text-indigo-600 hover:text-indigo-800">← 返回日报</a>
+</div>
+
+<article class="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+    <!-- 评分与来源 -->
+    <div class="flex items-center gap-3 mb-4">
+        {% if paper.relevance_score %}
+        <div class="flex items-center">
+            {% for i in range(5) %}
+                {% if i < (paper.relevance_score | round | int) %}
+                <span class="text-yellow-400 text-xl">★</span>
+                {% else %}
+                <span class="text-gray-300 text-xl">★</span>
+                {% endif %}
+            {% endfor %}
+            <span class="text-gray-500 ml-2">({{ "%.1f"|format(paper.relevance_score) }})</span>
+        </div>
+        {% else %}
+        <span class="text-sm text-gray-400 bg-gray-100 px-2 py-1 rounded">AI 未处理</span>
+        {% endif %}
+
+        <span class="text-xs px-2 py-1 rounded
+            {% if paper.source == 'semantic_scholar' %}bg-blue-100 text-blue-700
+            {% elif paper.source == 'arxiv' %}bg-red-100 text-red-700
+            {% else %}bg-gray-100 text-gray-600{% endif %}">
+            {{ paper.source }}
+        </span>
+
+        {% if not paper.ai_processed %}
+        <span class="text-xs px-2 py-1 rounded bg-orange-100 text-orange-600">未处理</span>
+        {% endif %}
+    </div>
+
+    <!-- 中文标题 -->
+    {% if paper.title_zh %}
+    <h1 class="text-xl font-bold text-gray-900 mb-2">{{ paper.title_zh }}</h1>
+    {% endif %}
+
+    <!-- 英文标题 -->
+    <h2 class="text-lg {{ 'text-gray-600' if paper.title_zh else 'font-bold text-gray-900' }} mb-4">
+        {{ paper.title }}
+    </h2>
+
+    <!-- 元信息 -->
+    <div class="flex flex-wrap gap-4 text-sm text-gray-600 mb-4 pb-4 border-b border-gray-100">
+        {% if paper.authors %}
+            {% set authors_list = json.loads(paper.authors) %}
+            <div>
+                <span class="font-medium text-gray-500">作者：</span>
+                {{ authors_list | join(", ") }}
+            </div>
+        {% endif %}
+        {% if paper.journal %}
+        <div>
+            <span class="font-medium text-gray-500">期刊：</span>
+            {{ paper.journal }}
+        </div>
+        {% endif %}
+        {% if paper.published_date %}
+        <div>
+            <span class="font-medium text-gray-500">日期：</span>
+            {{ paper.published_date }}
+        </div>
+        {% endif %}
+        {% if paper.doi %}
+        <div>
+            <span class="font-medium text-gray-500">DOI：</span>
+            <a href="https://doi.org/{{ paper.doi }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline">{{ paper.doi }}</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 期刊等级 -->
+    {% if journal_rank %}
+    <div class="flex items-center gap-2 mb-4">
+        <span class="text-sm font-medium text-gray-500">期刊等级：</span>
+        {% if journal_rank.jcr_rank %}
+        <span class="text-sm px-2 py-0.5 rounded font-medium
+            {% if journal_rank.jcr_rank == 'Q1' %}bg-green-100 text-green-700
+            {% elif journal_rank.jcr_rank == 'Q2' %}bg-yellow-100 text-yellow-700
+            {% else %}bg-gray-100 text-gray-600{% endif %}">
+            {{ journal_rank.jcr_rank }}
+        </span>
+        {% endif %}
+        {% if journal_rank.cas_rank %}
+        <span class="text-sm px-2 py-0.5 rounded font-medium
+            {% if '1区' in journal_rank.cas_rank %}bg-green-100 text-green-700
+            {% elif '2区' in journal_rank.cas_rank %}bg-blue-100 text-blue-700
+            {% else %}bg-gray-100 text-gray-600{% endif %}">
+            中科院{{ journal_rank.cas_rank }}
+        </span>
+        {% endif %}
+        <span class="text-sm px-2 py-0.5 rounded bg-purple-50 text-purple-700">
+            IF: {{ journal_rank.impact_factor }}
+        </span>
+    </div>
+    {% endif %}
+
+    <!-- 引用信息 -->
+    {% if paper.citation_count is not none %}
+    <div class="flex items-center gap-4 text-sm text-gray-600 mb-4">
+        <span>📊 被引次数：{{ paper.citation_count }}</span>
+        {% if paper.influential_citation_count is not none %}
+        <span>⭐ 有影响力引用：{{ paper.influential_citation_count }}</span>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- AI 一句话总结 -->
+    {% if paper.summary_zh %}
+    <div class="bg-indigo-50 rounded-lg p-4 mb-4">
+        <p class="text-sm font-medium text-indigo-700 mb-1">AI 一句话总结</p>
+        <p class="text-indigo-900">{{ paper.summary_zh }}</p>
+    </div>
+    {% endif %}
+
+    <!-- 关键词 -->
+    {% if paper.keywords %}
+    <div class="flex flex-wrap gap-2 mb-6">
+        {% for kw in json.loads(paper.keywords) %}
+        <span class="text-sm bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full">#{{ kw }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- 摘要 -->
+    {% if paper.abstract %}
+    <div class="mb-6">
+        <h3 class="text-sm font-semibold text-gray-700 mb-2">Abstract</h3>
+        <p class="text-sm text-gray-600 leading-relaxed">{{ paper.abstract }}</p>
+    </div>
+    {% endif %}
+
+    <!-- 原文链接 -->
+    {% if paper.url %}
+    <div class="pt-4 border-t border-gray-100">
+        <a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer"
+           class="inline-flex items-center gap-1 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
+            查看原文 ↗
+        </a>
+    </div>
+    {% endif %}
+</article>
+
+{% else %}
+<div class="text-center py-20 text-gray-400">
+    <p class="text-lg mb-2">📄 论文未找到</p>
+    <a href="/" class="text-indigo-600 hover:underline text-sm">返回日报</a>
+</div>
+{% endif %}
+{% endblock %}

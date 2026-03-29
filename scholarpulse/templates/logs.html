@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}抓取日志 — ScholarPulse{% endblock %}
+
+{% block content %}
+<h1 class="text-xl font-bold text-gray-800 mb-6">📋 抓取日志</h1>
+
+{% if logs %}
+<div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-600">
+            <tr>
+                <th class="px-4 py-3 text-left font-medium">数据源</th>
+                <th class="px-4 py-3 text-left font-medium">开始时间</th>
+                <th class="px-4 py-3 text-left font-medium">结束时间</th>
+                <th class="px-4 py-3 text-center font-medium">发现</th>
+                <th class="px-4 py-3 text-center font-medium">新增</th>
+                <th class="px-4 py-3 text-center font-medium">状态</th>
+                <th class="px-4 py-3 text-left font-medium">错误信息</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+            {% for log in logs %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 font-medium text-gray-700">{{ log.source }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ log.started_at.strftime('%Y-%m-%d %H:%M') if log.started_at else '-' }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ log.finished_at.strftime('%Y-%m-%d %H:%M') if log.finished_at else '-' }}</td>
+                <td class="px-4 py-3 text-center">{{ log.papers_found }}</td>
+                <td class="px-4 py-3 text-center text-green-600 font-medium">{{ log.papers_new }}</td>
+                <td class="px-4 py-3 text-center">
+                    {% if log.status == 'success' %}
+                    <span class="text-green-600">✅</span>
+                    {% elif log.status == 'error' %}
+                    <span class="text-red-600">❌</span>
+                    {% else %}
+                    <span class="text-yellow-600">⏳</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-red-500 text-xs">{{ log.error_message or '' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-center py-20 text-gray-400">
+    <p class="text-lg">暂无抓取日志</p>
+</div>
+{% endif %}
+{% endblock %}

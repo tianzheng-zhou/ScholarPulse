@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ScholarPulse{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+    <!-- 导航栏 -->
+    <nav class="bg-white border-b border-gray-200 shadow-sm">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+            <a href="/" class="text-xl font-bold text-indigo-600 tracking-tight">
+                📚 ScholarPulse
+            </a>
+            <div class="flex items-center gap-4 text-sm">
+                <a href="/" class="hover:text-indigo-600 transition">日报</a>
+                <a href="/settings" class="hover:text-indigo-600 transition">设置</a>
+                <a href="/logs" class="hover:text-indigo-600 transition">日志</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <main class="max-w-6xl mx-auto px-4 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="text-center text-xs text-gray-400 py-6 border-t border-gray-100 mt-10">
+        ScholarPulse — 多平台聚合学术 AI 日报系统
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

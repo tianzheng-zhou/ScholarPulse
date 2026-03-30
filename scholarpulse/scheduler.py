@@ -15,6 +15,10 @@ from .ai.summarizer import AISummarizer
 from .config import AppConfig
 from .database import Paper, SessionLocal, get_db
 from .fetchers.arxiv import ArxivFetcher
+from .fetchers.crossref import CrossRefEnricher
+from .fetchers.ieee_xplore import IEEEXploreFetcher
+from .fetchers.openalex import OpenAlexFetcher
+from .fetchers.rss import RSSFetcher
 from .fetchers.semantic_scholar import SemanticScholarFetcher
 from .journal_ranks import lookup_journal_rank
 
@@ -42,6 +46,20 @@ async def run_fetch_job(config: AppConfig, days: int | None = None) -> dict[str,
                     ("arxiv", ArxivFetcher(categories=arxiv_cfg.categories))
                 )
 
+            openalex_cfg = config.sources.get("openalex")
+            if openalex_cfg and openalex_cfg.enabled:
+                fetchers.append(
+                    ("openalex", OpenAlexFetcher(email=openalex_cfg.email))
+                )
+
+            ieee_cfg = config.sources.get("ieee_xplore")
+            if ieee_cfg and ieee_cfg.enabled:
+                fetchers.append(("ieee_xplore", IEEEXploreFetcher()))
+
+            rss_cfg = config.sources.get("rss")
+            if rss_cfg and rss_cfg.enabled and rss_cfg.feeds:
+                fetchers.append(("rss", RSSFetcher(feeds=rss_cfg.feeds)))
+
             for name, fetcher in fetchers:
                 started = datetime.utcnow()
                 try:
@@ -61,7 +79,18 @@ async def run_fetch_job(config: AppConfig, days: int | None = None) -> dict[str,
                     )
                     stats["fetchers"][name] = {"error": str(e)}
 
-            # ── 2. 期刊分级标签 ──
+            # ── 2. CrossRef 元数据补全 ──
+            crossref_cfg = config.sources.get("crossref")
+            if crossref_cfg and crossref_cfg.enabled:
+                try:
+                    enricher = CrossRefEnricher(email=crossref_cfg.email)
+                    enriched = await enricher.enrich_papers(db)
+                    stats["crossref_enriched"] = enriched
+                except Exception as e:
+                    logger.exception("CrossRef 元数据补全失败")
+                    stats["crossref_enriched"] = {"error": str(e)}
+
+            # ── 3. 期刊分级标签 ──
             unranked = db.query(Paper).filter(Paper.journal_rank.is_(None), Paper.journal.isnot(None)).all()
             for paper in unranked:
                 if paper.journal:
@@ -70,7 +99,7 @@ async def run_fetch_job(config: AppConfig, days: int | None = None) -> dict[str,
                         paper.set_journal_rank(rank.to_dict())
             db.commit()
 
-        # ── 3. AI 处理 ──
+        # ── 4. AI 处理 ──
         MAX_AI_RETRIES = 3
         unprocessed = (
             db.query(Paper)

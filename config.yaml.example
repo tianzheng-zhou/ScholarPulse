@@ -23,13 +23,18 @@ sources:
       - cond-mat.mtrl-sci
   openalex:
     enabled: false
+    email: ""             # 设 mailto 可进入 polite pool，提升速率
   ieee_xplore:
     enabled: false
+    # API Key 请在 .env 文件中设置 IEEE_API_KEY（免费申请，200 次/天）
   crossref:
-    enabled: false
+    enabled: false        # 辅助层：补全引用数和期刊元数据
+    email: ""             # 设 mailto 可进入 polite pool
   rss:
     enabled: false
     feeds:
+      - name: Nature Electronics
+        url: https://www.nature.com/natelectron.rss
       - name: Example Journal
         url: https://example.com/rss
 

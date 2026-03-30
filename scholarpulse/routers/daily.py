@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from ..config import BASE_DIR
@@ -68,9 +68,9 @@ async def library_index(
             )
         )
 
-    # 来源筛选
+    # 来源筛选（检查 sources JSON 数组）
     if source:
-        query = query.filter(Paper.source == source)
+        query = query.filter(Paper.sources.like(f'%"{source}"%'))
 
     # 评分筛选
     if score_filter is not None:
@@ -98,9 +98,11 @@ async def library_index(
     page = max(1, min(page, total_pages))
     papers = query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE).all()
 
-    # 可用来源列表
-    sources_list = db.query(Paper.source).distinct().all()
-    available_sources = [s[0] for s in sources_list]
+    # 可用来源列表（从 sources JSON 数组提取所有不重复来源）
+    sources_rows = db.execute(
+        text("SELECT DISTINCT value FROM papers, json_each(papers.sources) WHERE papers.sources IS NOT NULL")
+    ).fetchall()
+    available_sources = sorted(r[0] for r in sources_rows)
 
     # 统计概要
     total_all = db.query(Paper).count()
@@ -176,7 +178,7 @@ async def daily_view(
     query = db.query(Paper).filter(Paper.published_date == target_date)
 
     if source:
-        query = query.filter(Paper.source == source)
+        query = query.filter(Paper.sources.like(f'%"{source}"%'))
     if score_filter is not None:
         query = query.filter(Paper.relevance_score >= score_filter)
 
@@ -197,9 +199,11 @@ async def daily_view(
     page = max(1, min(page, total_pages))
     papers = papers[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
 
-    # 可用来源列表
-    sources_list = db.query(Paper.source).distinct().all()
-    available_sources = [s[0] for s in sources_list]
+    # 可用来源列表（从 sources JSON 数组提取所有不重复来源）
+    sources_rows = db.execute(
+        text("SELECT DISTINCT value FROM papers, json_each(papers.sources) WHERE papers.sources IS NOT NULL")
+    ).fetchall()
+    available_sources = sorted(r[0] for r in sources_rows)
 
     # 获取有数据的日期列表（最近 30 天有论文的日期）
     date_counts = (

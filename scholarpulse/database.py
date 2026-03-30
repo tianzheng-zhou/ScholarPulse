@@ -60,8 +60,20 @@ class Paper(Base):
     citation_count = Column(Integer)
     influential_citation_count = Column(Integer)
     doi = Column(Text)
+    sources = Column(Text)  # JSON list, e.g. ["arxiv", "semantic_scholar"]
     relevance_reason = Column(Text)
     ai_fail_count = Column(Integer, default=0)
+
+    def get_sources(self) -> list[str]:
+        if not self.sources:
+            return [self.source] if self.source else []
+        return json.loads(self.sources)
+
+    def add_source(self, src: str) -> None:
+        current = self.get_sources()
+        if src not in current:
+            current.append(src)
+            self.sources = json.dumps(current, ensure_ascii=False)
 
     def get_authors(self) -> list[str]:
         if not self.authors:
@@ -141,10 +153,15 @@ def _migrate_columns() -> None:
     migrations = [
         ("relevance_reason", "TEXT"),
         ("ai_fail_count", "INTEGER DEFAULT 0"),
+        ("sources", "TEXT"),
     ]
     for col_name, col_type in migrations:
         if col_name not in existing:
             cursor.execute(f"ALTER TABLE papers ADD COLUMN {col_name} {col_type}")
+    # 为已有数据补充 sources 字段
+    cursor.execute(
+        "UPDATE papers SET sources = json_array(source) WHERE sources IS NULL"
+    )
     conn.commit()
     conn.close()
 

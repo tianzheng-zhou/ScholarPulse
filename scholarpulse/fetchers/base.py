@@ -64,12 +64,13 @@ class BaseFetcher(ABC):
             if exists:
                 continue
 
-            # 2. 跨源 DOI 去重
+            # 2. 跨源 DOI 去重：若已有同 DOI 论文，补记来源后跳过
             if rp.doi:
                 doi_exists = (
                     db.query(Paper).filter(Paper.doi == rp.doi).first()
                 )
                 if doi_exists:
+                    doi_exists.add_source(rp.source)
                     continue
 
             import json
@@ -84,6 +85,7 @@ class BaseFetcher(ABC):
                 published_date=rp.published_date,
                 journal=rp.journal,
                 doi=rp.doi,
+                sources=json.dumps([rp.source], ensure_ascii=False),
                 citation_count=rp.citation_count,
                 influential_citation_count=rp.influential_citation_count,
                 fetched_at=datetime.utcnow(),

@@ -79,9 +79,19 @@ async def run_fetch_job(config: AppConfig, days: int | None = None) -> dict[str,
 
         if unprocessed and config.llm.api_key:
             summarizer = AISummarizer(config)
+            total = len(unprocessed)
+            # 收集需要处理的 paper id 列表（避免在并发中共享 session）
+            paper_ids = [p.id for p in unprocessed]
+            processed_count = 0
 
-            async def _process_one(paper: Paper) -> None:
+            async def _process_one(paper_id: int) -> None:
+                nonlocal processed_count
+                # 每篇论文使用独立 session，避免并发 commit/rollback 互相干扰
+                sess = SessionLocal()
                 try:
+                    paper = sess.query(Paper).get(paper_id)
+                    if not paper or paper.ai_processed:
+                        return
                     result = await summarizer.process_paper(
                         title=paper.title,
                         abstract=paper.abstract or "",
@@ -95,15 +105,25 @@ async def run_fetch_job(config: AppConfig, days: int | None = None) -> dict[str,
                         if result.get("keywords"):
                             paper.set_keywords(result["keywords"])
                         paper.ai_processed = True
-                        stats["ai_processed"] = stats.get("ai_processed", 0) + 1
+                        sess.commit()
+                        processed_count += 1
+                        stats["ai_processed"] = processed_count
+                        if processed_count % 50 == 0:
+                            logger.info(
+                                "AI 处理进度: %d/%d (%.0f%%)",
+                                processed_count, total,
+                                processed_count / total * 100,
+                            )
                 except Exception:
-                    logger.exception("AI 处理论文 %d 失败", paper.id)
+                    logger.exception("AI 处理论文 %d 失败", paper_id)
+                    sess.rollback()
+                finally:
+                    sess.close()
 
             # 并发处理（由 AISummarizer 内部 semaphore 控制并发数）
-            await asyncio.gather(*[_process_one(p) for p in unprocessed])
+            await asyncio.gather(*[_process_one(pid) for pid in paper_ids])
 
-            db.commit()
-            logger.info("AI 处理完成: %d 篇", stats["ai_processed"])
+            logger.info("AI 处理完成: %d/%d 篇", processed_count, total)
 
     finally:
         db.close()

@@ -2,201 +2,184 @@
 {% block title %}日报 {{ target_date }} — ScholarPulse{% endblock %}
 
 {% block content %}
-<!-- 日期导航 -->
-<div class="flex items-center justify-between mb-6">
-    <a href="/daily/{{ prev_date }}" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
-        ← {{ prev_date }}
-    </a>
-    <h1 class="text-lg font-semibold text-gray-800">
-        📅 {{ target_date }}
-        <span class="text-sm font-normal text-gray-500 ml-2">共 {{ total_count }} 篇</span>
-    </h1>
-    <a href="/daily/{{ next_date }}" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
-        {{ next_date }} →
-    </a>
-</div>
-
-<!-- 筛选栏 -->
-<div class="flex flex-wrap items-center gap-3 mb-6 bg-white rounded-lg p-3 shadow-sm border border-gray-100">
-    <a href="/daily/{{ target_date.isoformat() }}"
-       class="px-3 py-1 rounded-full text-sm {{ 'bg-indigo-600 text-white' if not current_source else 'bg-gray-100 hover:bg-gray-200 text-gray-700' }}">
-        全部
-    </a>
-    {% for src in sources %}
-    <a href="/daily/{{ target_date.isoformat() }}?source={{ src }}"
-       class="px-3 py-1 rounded-full text-sm {{ 'bg-indigo-600 text-white' if current_source == src else 'bg-gray-100 hover:bg-gray-200 text-gray-700' }}">
-        {{ src }}
-    </a>
-    {% endfor %}
-
-    <div class="ml-auto flex items-center gap-2">
-        <form method="get" action="/daily/{{ target_date.isoformat() }}" class="flex items-center gap-2">
-            {% if current_source %}
-            <input type="hidden" name="source" value="{{ current_source }}">
-            {% endif %}
-            <select name="min_score" onchange="this.form.submit()" class="text-sm border border-gray-200 rounded px-2 py-1">
-                <option value="">评分筛选</option>
-                <option value="3" {{ 'selected' if current_min_score == 3 }}>≥ 3 分</option>
-                <option value="4" {{ 'selected' if current_min_score == 4 }}>≥ 4 分</option>
-                <option value="5" {{ 'selected' if current_min_score == 5 }}>= 5 分</option>
-            </select>
-        </form>
-    </div>
-</div>
-
-<!-- 手动抓取 -->
-<div class="mb-6 bg-white rounded-lg p-4 shadow-sm border border-gray-100">
-    <form method="post" action="/fetch" class="flex items-center gap-3">
-        <span class="text-sm text-gray-600">手动抓取：</span>
-        <select name="days" class="text-sm border border-gray-200 rounded px-2 py-1">
-            <option value="1">最近 1 天</option>
-            <option value="3" selected>最近 3 天</option>
-            <option value="7">最近 7 天</option>
-            <option value="14">最近 14 天</option>
-            <option value="30">最近 30 天</option>
-        </select>
-        <button type="submit" class="bg-indigo-600 text-white px-4 py-1.5 rounded text-sm hover:bg-indigo-700 transition">
-            🔄 开始抓取
-        </button>
-    </form>
-</div>
-
-<!-- 论文列表 -->
-{% if papers %}
-<div class="space-y-4">
-    {% for paper in papers %}
-    <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
-        <div class="flex items-start justify-between gap-4">
-            <div class="flex-1 min-w-0">
-                <!-- 评分 -->
-                <div class="flex items-center gap-2 mb-2">
-                    {% if paper.relevance_score %}
-                    <div class="flex items-center">
-                        {% for i in range(5) %}
-                            {% if i < (paper.relevance_score | round | int) %}
-                            <span class="text-yellow-400">★</span>
-                            {% else %}
-                            <span class="text-gray-300">★</span>
-                            {% endif %}
-                        {% endfor %}
-                        <span class="text-sm text-gray-500 ml-1">({{ "%.1f"|format(paper.relevance_score) }})</span>
-                    </div>
-                    {% else %}
-                    <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">未处理</span>
-                    {% endif %}
-
-                    <!-- 来源标签 -->
-                    <span class="text-xs px-2 py-0.5 rounded
-                        {% if paper.source == 'semantic_scholar' %}bg-blue-100 text-blue-700
-                        {% elif paper.source == 'arxiv' %}bg-red-100 text-red-700
-                        {% else %}bg-gray-100 text-gray-600{% endif %}">
-                        {{ paper.source }}
-                    </span>
-                </div>
-
-                <!-- 中文标题 -->
-                {% if paper.title_zh %}
-                <h2 class="text-base font-semibold text-gray-900 mb-1">
-                    <a href="/paper/{{ paper.id }}" class="hover:text-indigo-600 transition">
-                        {{ paper.title_zh }}
+<div class="flex gap-6">
+    <!-- 左侧：日期列表 -->
+    <aside class="w-48 shrink-0 hidden md:block">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-3 sticky top-20">
+            <h3 class="text-sm font-semibold text-gray-600 mb-2">📅 有数据的日期</h3>
+            <ul class="space-y-1 max-h-[60vh] overflow-y-auto text-sm">
+                {% for dc_date, dc_count in date_counts %}
+                <li>
+                    <a href="/daily/{{ dc_date.isoformat() }}"
+                       class="flex justify-between px-2 py-1 rounded {{ 'bg-indigo-50 text-indigo-700 font-medium' if dc_date == target_date else 'text-gray-600 hover:bg-gray-50' }}">
+                        <span>{{ dc_date.strftime('%m-%d') }}</span>
+                        <span class="text-gray-400">{{ dc_count }}</span>
                     </a>
-                </h2>
-                {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </aside>
 
-                <!-- 英文标题 -->
-                <h3 class="text-sm text-gray-600 mb-2 {{ 'font-semibold' if not paper.title_zh }}">
-                    <a href="/paper/{{ paper.id }}" class="hover:text-indigo-600 transition">
-                        {{ paper.title }}
-                    </a>
-                </h3>
-
-                <!-- 作者 & 期刊 & 日期 -->
-                <div class="text-xs text-gray-500 mb-2 flex items-center flex-wrap gap-x-3 gap-y-1">
-                    {% if paper.authors %}
-                        {% set authors_list = json.loads(paper.authors) %}
-                        <span>{{ authors_list[:3] | join(", ") }}{% if authors_list | length > 3 %} et al.{% endif %}</span>
-                    {% endif %}
-                    {% if paper.journal %}
-                    <span class="text-gray-400">|</span>
-                    <span class="font-medium text-gray-600">{{ paper.journal }}</span>
-                    {% endif %}
-                    {% if paper.published_date %}
-                    <span class="text-gray-400">|</span>
-                    <span>{{ paper.published_date }}</span>
-                    {% endif %}
-                </div>
-
-                <!-- 期刊等级标签 -->
-                {% if paper.journal_rank %}
-                    {% set rank = json.loads(paper.journal_rank) %}
-                    <div class="flex items-center gap-1.5 mb-2">
-                        {% if rank.get('jcr') %}
-                        <span class="text-xs px-1.5 py-0.5 rounded font-medium
-                            {% if rank.jcr == 'Q1' %}bg-green-100 text-green-700
-                            {% elif rank.jcr == 'Q2' %}bg-yellow-100 text-yellow-700
-                            {% else %}bg-gray-100 text-gray-600{% endif %}">
-                            {{ rank.jcr }}
-                        </span>
-                        {% endif %}
-                        {% if rank.get('cas') %}
-                        <span class="text-xs px-1.5 py-0.5 rounded font-medium
-                            {% if '1区' in rank.cas %}bg-green-100 text-green-700
-                            {% elif '2区' in rank.cas %}bg-blue-100 text-blue-700
-                            {% else %}bg-gray-100 text-gray-600{% endif %}">
-                            中科院{{ rank.cas }}
-                        </span>
-                        {% endif %}
-                        {% if rank.get('if') %}
-                        <span class="text-xs px-1.5 py-0.5 rounded bg-purple-50 text-purple-700">
-                            IF: {{ rank['if'] }}
-                        </span>
-                        {% endif %}
-                    </div>
-                {% endif %}
-
-                <!-- AI 摘要 -->
-                {% if paper.summary_zh %}
-                <div class="text-sm text-gray-700 mb-2">
-                    <span class="text-indigo-500 font-medium">AI 摘要：</span>
-                    <span class="leading-relaxed">{{ paper.summary_zh }}</span>
-                </div>
-                {% endif %}
-
-                <!-- 评分理由 -->
-                {% if paper.relevance_reason %}
-                <p class="text-xs text-amber-600 mb-2">💡 {{ paper.relevance_reason }}</p>
-                {% endif %}
-
-                <!-- 关键词 -->
-                {% if paper.keywords %}
-                <div class="flex flex-wrap gap-1.5">
-                    {% for kw in json.loads(paper.keywords) %}
-                    <span class="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">#{{ kw }}</span>
-                    {% endfor %}
-                </div>
-                {% endif %}
+    <!-- 右侧：日报主体 -->
+    <div class="flex-1 min-w-0">
+        <!-- 日期导航 -->
+        <div class="flex items-center justify-between mb-5">
+            <a href="/daily/{{ prev_date }}" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">← {{ prev_date }}</a>
+            <div class="text-center">
+                <h1 class="text-lg font-semibold text-gray-800">
+                    📅 {{ target_date }}
+                    <span class="text-sm font-normal text-gray-500 ml-2">共 {{ total_count }} 篇</span>
+                </h1>
+                <p class="text-xs text-gray-400">按论文发表日期</p>
             </div>
+            <a href="/daily/{{ next_date }}" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">{{ next_date }} →</a>
+        </div>
 
-            <!-- 原文链接 -->
-            <div class="flex flex-col items-end gap-2 shrink-0">
-                {% if paper.citation_count is not none %}
-                <span class="text-xs text-gray-400">📊 {{ paper.citation_count }} 引</span>
-                {% endif %}
-                {% if paper.url %}
-                <a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer"
-                   class="text-xs text-indigo-600 hover:text-indigo-800 whitespace-nowrap">
-                    查看原文 ↗
-                </a>
-                {% endif %}
+        <!-- 筛选栏 -->
+        <div class="flex flex-wrap items-center gap-3 mb-5 bg-white rounded-lg p-3 shadow-sm border border-gray-100">
+            <a href="/daily/{{ target_date.isoformat() }}"
+               class="px-3 py-1 rounded-full text-sm {{ 'bg-indigo-600 text-white' if not current_source else 'bg-gray-100 hover:bg-gray-200 text-gray-700' }}">
+                全部
+            </a>
+            {% for src in sources %}
+            <a href="/daily/{{ target_date.isoformat() }}?source={{ src }}"
+               class="px-3 py-1 rounded-full text-sm {{ 'bg-indigo-600 text-white' if current_source == src else 'bg-gray-100 hover:bg-gray-200 text-gray-700' }}">
+                {{ src }}
+            </a>
+            {% endfor %}
+
+            <div class="ml-auto">
+                <form method="get" action="/daily/{{ target_date.isoformat() }}" class="flex items-center gap-2">
+                    {% if current_source %}<input type="hidden" name="source" value="{{ current_source }}">{% endif %}
+                    <select name="min_score" onchange="this.form.submit()" class="text-sm border border-gray-200 rounded px-2 py-1">
+                        <option value="">评分筛选</option>
+                        <option value="3" {{ 'selected' if current_min_score == 3 }}>≥ 3 分</option>
+                        <option value="4" {{ 'selected' if current_min_score == 4 }}>≥ 4 分</option>
+                        <option value="5" {{ 'selected' if current_min_score == 5 }}>= 5 分</option>
+                    </select>
+                </form>
             </div>
         </div>
+
+        <!-- 论文列表 -->
+        {% if papers %}
+        <div class="space-y-4">
+            {% for paper in papers %}
+            <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-2">
+                            {% if paper.relevance_score %}
+                            <div class="flex items-center">
+                                {% for i in range(5) %}
+                                    {% if i < (paper.relevance_score | round | int) %}
+                                    <span class="text-yellow-400">★</span>
+                                    {% else %}
+                                    <span class="text-gray-300">★</span>
+                                    {% endif %}
+                                {% endfor %}
+                                <span class="text-sm text-gray-500 ml-1">({{ "%.1f"|format(paper.relevance_score) }})</span>
+                            </div>
+                            {% else %}
+                            <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">未处理</span>
+                            {% endif %}
+
+                            <span class="text-xs px-2 py-0.5 rounded
+                                {% if paper.source == 'semantic_scholar' %}bg-blue-100 text-blue-700
+                                {% elif paper.source == 'arxiv' %}bg-red-100 text-red-700
+                                {% else %}bg-gray-100 text-gray-600{% endif %}">
+                                {{ paper.source }}
+                            </span>
+                        </div>
+
+                        {% if paper.title_zh %}
+                        <h2 class="text-base font-semibold text-gray-900 mb-1">
+                            <a href="/paper/{{ paper.id }}" class="hover:text-indigo-600 transition">{{ paper.title_zh }}</a>
+                        </h2>
+                        {% endif %}
+
+                        <h3 class="text-sm text-gray-600 mb-2 {{ 'font-semibold' if not paper.title_zh }}">
+                            <a href="/paper/{{ paper.id }}" class="hover:text-indigo-600 transition">{{ paper.title }}</a>
+                        </h3>
+
+                        <div class="text-xs text-gray-500 mb-2 flex items-center flex-wrap gap-x-3 gap-y-1">
+                            {% if paper.authors %}
+                                {% set authors_list = json.loads(paper.authors) %}
+                                <span>{{ authors_list[:3] | join(", ") }}{% if authors_list | length > 3 %} et al.{% endif %}</span>
+                            {% endif %}
+                            {% if paper.journal %}
+                            <span class="text-gray-400">|</span>
+                            <span class="font-medium text-gray-600">{{ paper.journal }}</span>
+                            {% endif %}
+                        </div>
+
+                        {% if paper.journal_rank %}
+                            {% set rank = json.loads(paper.journal_rank) %}
+                            <div class="flex items-center gap-1.5 mb-2">
+                                {% if rank.get('jcr') %}
+                                <span class="text-xs px-1.5 py-0.5 rounded font-medium
+                                    {% if rank.jcr == 'Q1' %}bg-green-100 text-green-700
+                                    {% elif rank.jcr == 'Q2' %}bg-yellow-100 text-yellow-700
+                                    {% else %}bg-gray-100 text-gray-600{% endif %}">
+                                    {{ rank.jcr }}
+                                </span>
+                                {% endif %}
+                                {% if rank.get('cas') %}
+                                <span class="text-xs px-1.5 py-0.5 rounded font-medium
+                                    {% if '1区' in rank.cas %}bg-green-100 text-green-700
+                                    {% elif '2区' in rank.cas %}bg-blue-100 text-blue-700
+                                    {% else %}bg-gray-100 text-gray-600{% endif %}">
+                                    中科院{{ rank.cas }}
+                                </span>
+                                {% endif %}
+                                {% if rank.get('if') %}
+                                <span class="text-xs px-1.5 py-0.5 rounded bg-purple-50 text-purple-700">
+                                    IF: {{ rank['if'] }}
+                                </span>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+
+                        {% if paper.summary_zh %}
+                        <div class="text-sm text-gray-700 mb-2">
+                            <span class="text-indigo-500 font-medium">AI 摘要：</span>
+                            <span class="leading-relaxed">{{ paper.summary_zh }}</span>
+                        </div>
+                        {% endif %}
+
+                        {% if paper.relevance_reason %}
+                        <p class="text-xs text-amber-600 mb-2">💡 {{ paper.relevance_reason }}</p>
+                        {% endif %}
+
+                        {% if paper.keywords %}
+                        <div class="flex flex-wrap gap-1.5">
+                            {% for kw in json.loads(paper.keywords) %}
+                            <span class="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">#{{ kw }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="flex flex-col items-end gap-2 shrink-0">
+                        {% if paper.citation_count is not none %}
+                        <span class="text-xs text-gray-400">📊 {{ paper.citation_count }} 引</span>
+                        {% endif %}
+                        {% if paper.url %}
+                        <a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer"
+                           class="text-xs text-indigo-600 hover:text-indigo-800 whitespace-nowrap">查看原文 ↗</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-20 text-gray-400">
+            <p class="text-lg mb-2">📭 该日期暂无论文</p>
+            <p class="text-sm">选择左侧有数据的日期，或<a href="/" class="text-indigo-600 hover:underline">返回论文库</a>抓取新数据</p>
+        </div>
+        {% endif %}
     </div>
-    {% endfor %}
 </div>
-{% else %}
-<div class="text-center py-20 text-gray-400">
-    <p class="text-lg mb-2">📭 今日暂无论文</p>
-    <p class="text-sm">尝试执行手动抓取，或查看其他日期</p>
-</div>
-{% endif %}
 {% endblock %}

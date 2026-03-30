@@ -22,3 +22,99 @@
 .paper-card:hover {
     transform: translateY(-1px);
 }
+
+/* AI 设置助手动画 */
+#chatPanel {
+    animation: chatSlideUp 0.2s ease-out;
+}
+@keyframes chatSlideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+#chatToggle {
+    animation: chatPulse 2s ease-in-out infinite;
+}
+#chatToggle:hover {
+    animation: none;
+}
+@keyframes chatPulse {
+    0%, 100% { box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3); }
+    50% { box-shadow: 0 4px 20px rgba(79, 70, 229, 0.5); }
+}
+
+/* 聊天气泡内 Markdown 样式 */
+.chat-md h1, .chat-md h2, .chat-md h3, .chat-md h4 {
+    font-weight: 600;
+    margin: 0.6em 0 0.3em;
+    line-height: 1.3;
+}
+.chat-md h1 { font-size: 1.1em; }
+.chat-md h2 { font-size: 1.05em; }
+.chat-md h3 { font-size: 1em; }
+.chat-md h4 { font-size: 0.95em; }
+.chat-md p {
+    margin: 0.3em 0;
+}
+.chat-md ul, .chat-md ol {
+    padding-left: 1.4em;
+    margin: 0.3em 0;
+}
+.chat-md ul { list-style: disc; }
+.chat-md ol { list-style: decimal; }
+.chat-md li {
+    margin: 0.15em 0;
+}
+.chat-md code {
+    background: #eef2ff;
+    color: #4338ca;
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+    font-size: 0.85em;
+}
+.chat-md pre {
+    background: #1f2937;
+    color: #86efac;
+    padding: 0.6em 0.8em;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 0.5em 0;
+    font-size: 0.8em;
+    line-height: 1.5;
+}
+.chat-md pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    font-size: inherit;
+}
+.chat-md strong {
+    font-weight: 600;
+}
+.chat-md hr {
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    margin: 0.6em 0;
+}
+.chat-md blockquote {
+    border-left: 3px solid #c7d2fe;
+    padding-left: 0.8em;
+    margin: 0.4em 0;
+    color: #6b7280;
+}
+.chat-md a {
+    color: #4f46e5;
+    text-decoration: underline;
+}
+.chat-md table {
+    border-collapse: collapse;
+    margin: 0.4em 0;
+    font-size: 0.85em;
+}
+.chat-md th, .chat-md td {
+    border: 1px solid #e5e7eb;
+    padding: 0.3em 0.6em;
+}
+.chat-md th {
+    background: #f9fafb;
+    font-weight: 600;
+}

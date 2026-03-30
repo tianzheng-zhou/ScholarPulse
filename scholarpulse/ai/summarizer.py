@@ -21,7 +21,7 @@ from ..config import AppConfig
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
-<role>你是一位电子信息领域的资深学术助手，擅长分析学术论文。</role>
+<role>你是一位资深学术助手，擅长分析各领域学术论文。</role>
 <output_format>请始终严格按照指定的 JSON 格式回复，不要输出任何其他文字。</output_format>"""
 
 USER_PROMPT_TEMPLATE = """\
@@ -40,20 +40,51 @@ USER_PROMPT_TEMPLATE = """\
 
 <instructions>
 1. 将英文标题翻译为中文
-2. 用一句中文（30字以内）概括论文核心贡献，仅基于摘要内容
-3. 根据用户研究方向，对论文打 1-5 分相关性评分（5 为最相关）
-4. 简述评分理由
+2. 用 3-5 句中文总结论文的核心内容，包括：
+   - 研究解决什么问题
+   - 采用什么方法/技术
+   - 主要结果或发现
+   - 潜在应用价值（如有）
+3. 根据以下评分标准，对论文打 1-5 分相关性评分
+4. 详细说明评分理由（2-3 句）
 5. 提取 3-5 个英文关键词
-6. 如果期刊是顶级期刊（如 Nature/Science/Advanced Materials 等），评分时可适当酌情加分
 </instructions>
+
+<scoring_rubric>
+评分标准（基于用户的 research_description 和 keywords 综合判断）：
+
+5 分 — 高度相关：
+  - 论文主题与用户研究方向直接匹配
+  - 解决的问题、使用的方法或研究对象与用户关键词高度重叠
+  - 可直接用于用户的研究工作
+
+4 分 — 较相关：
+  - 论文主题属于用户研究的子领域或相邻领域
+  - 部分方法/结果对用户有参考价值
+
+3 分 — 一般相关：
+  - 属于同一大领域，但具体方向不同
+  - 包含一些可借鉴的方法或背景知识
+
+2 分 — 弱相关：
+  - 仅在学科大类上相关，具体内容与用户研究关联不大
+
+1 分 — 不相关：
+  - 与用户研究方向基本无关
+
+加分/减分因素：
+  - 顶级期刊（Nature/Science/领域顶刊）可酌情加 0.5 分
+  - 高被引论文可酌情加 0.5 分
+  - 最终分数不超过 5 分
+</scoring_rubric>
 
 <output_schema>
 严格返回如下 JSON，不要包含任何其他内容：
 {{
   "title_zh": "中文标题",
-  "summary_zh": "一句话中文总结（30字以内）",
+  "summary_zh": "3-5 句中文总结，包括研究问题、方法、主要结果和应用价值",
   "relevance_score": 4,
-  "relevance_reason": "简述为什么给这个分数",
+  "relevance_reason": "详细说明评分理由，包括与用户研究方向的关联点和参考价值",
   "keywords": ["keyword1", "keyword2", "keyword3"]
 }}
 </output_schema>"""

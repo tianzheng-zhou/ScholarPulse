@@ -1,13 +1,30 @@
-research_description: test
+research_description: Research on Thin-Film Transistors (TFTs) focusing on novel semiconductor
+  materials (oxide, organic, perovskite, 2D materials), flexible and stretchable electronics,
+  device physics, stability improvement, and applications in active matrix displays,
+  large-area X-ray sensors, neuromorphic computing, and bio-integrated electronics.
 keywords:
-- TFT
+- Thin-Film Transistor
+- Oxide semiconductor
+- IGZO
+- Organic field-effect transistor
+- Perovskite transistor
+- Flexible electronics
+- Stretchable electronics
+- Solution-processed TFT
+- Device stability
+- Active matrix display
+- X-ray detector
+- Neuromorphic computing
+- 2D materials
 sources:
   semantic_scholar:
     enabled: true
   arxiv:
     enabled: true
     categories:
-    - cs.ET
+    - physics.app-ph
+    - cond-mat.mtrl-sci
+    - physics.ins-det
   openalex:
     enabled: false
   ieee_xplore:

@@ -156,9 +156,15 @@
 
                 <!-- AI 摘要 -->
                 {% if paper.summary_zh %}
-                <p class="text-sm text-gray-700 mb-2">
-                    <span class="text-indigo-500 font-medium">AI 摘要：</span>{{ paper.summary_zh }}
-                </p>
+                <div class="text-sm text-gray-700 mb-2">
+                    <span class="text-indigo-500 font-medium">AI 摘要：</span>
+                    <span class="leading-relaxed">{{ paper.summary_zh }}</span>
+                </div>
+                {% endif %}
+
+                <!-- 评分理由 -->
+                {% if paper.relevance_reason %}
+                <p class="text-xs text-amber-600 mb-2">💡 {{ paper.relevance_reason }}</p>
                 {% endif %}
 
                 <!-- 关键词 -->

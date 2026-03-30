@@ -60,6 +60,7 @@ class Paper(Base):
     citation_count = Column(Integer)
     influential_citation_count = Column(Integer)
     doi = Column(Text)
+    relevance_reason = Column(Text)
 
     def get_authors(self) -> list[str]:
         if not self.authors:
@@ -116,8 +117,27 @@ SessionLocal = sessionmaker(bind=engine)
 
 
 def init_db() -> None:
-    """创建所有表"""
+    """创建所有表 + 自动迁移新列"""
     Base.metadata.create_all(bind=engine)
+    # 自动添加新列（SQLite ALTER TABLE ADD COLUMN）
+    _migrate_columns()
+
+
+def _migrate_columns() -> None:
+    """检查并添加缺失的列"""
+    import sqlite3
+    conn = sqlite3.connect(str(DATABASE_PATH))
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(papers)")
+    existing = {row[1] for row in cursor.fetchall()}
+    migrations = [
+        ("relevance_reason", "TEXT"),
+    ]
+    for col_name, col_type in migrations:
+        if col_name not in existing:
+            cursor.execute(f"ALTER TABLE papers ADD COLUMN {col_name} {col_type}")
+    conn.commit()
+    conn.close()
 
 
 def get_db() -> Session:  # type: ignore[type-arg]

@@ -23,51 +23,52 @@ logger = logging.getLogger(__name__)
 
 async def run_fetch_job(config: AppConfig, days: int | None = None) -> dict[str, Any]:
     """执行一次抓取 + AI 处理流程，返回统计信息"""
-    fetch_days = days or config.scheduler.fetch_days
+    fetch_days = days if days is not None else config.scheduler.fetch_days
     stats: dict[str, Any] = {"fetchers": {}, "ai_processed": 0}
 
     db = SessionLocal()
     try:
-        # ── 1. 抓取论文 ──
-        fetchers: list[tuple[str, Any]] = []
+        # ── 1. 抓取论文（days=0 时跳过抓取，仅做 AI 处理）──
+        if fetch_days > 0:
+            fetchers: list[tuple[str, Any]] = []
 
-        ss_cfg = config.sources.get("semantic_scholar")
-        if ss_cfg and ss_cfg.enabled:
-            fetchers.append(("semantic_scholar", SemanticScholarFetcher()))
+            ss_cfg = config.sources.get("semantic_scholar")
+            if ss_cfg and ss_cfg.enabled:
+                fetchers.append(("semantic_scholar", SemanticScholarFetcher()))
 
-        arxiv_cfg = config.sources.get("arxiv")
-        if arxiv_cfg and arxiv_cfg.enabled:
-            fetchers.append(
-                ("arxiv", ArxivFetcher(categories=arxiv_cfg.categories))
-            )
-
-        for name, fetcher in fetchers:
-            started = datetime.utcnow()
-            try:
-                raw_papers = await fetcher.fetch(
-                    keywords=config.keywords, days=fetch_days
+            arxiv_cfg = config.sources.get("arxiv")
+            if arxiv_cfg and arxiv_cfg.enabled:
+                fetchers.append(
+                    ("arxiv", ArxivFetcher(categories=arxiv_cfg.categories))
                 )
-                found, new = fetcher.save_papers(db, raw_papers)
-                fetcher.log_fetch(db, started, found, new, status="success")
-                stats["fetchers"][name] = {"found": found, "new": new}
-                logger.info(
-                    "%s: 发现 %d 篇，新增 %d 篇", name, found, new
-                )
-            except Exception as e:
-                logger.exception("抓取器 %s 失败", name)
-                fetcher.log_fetch(
-                    db, started, 0, 0, status="error", error_message=str(e)
-                )
-                stats["fetchers"][name] = {"error": str(e)}
 
-        # ── 2. 期刊分级标签 ──
-        unranked = db.query(Paper).filter(Paper.journal_rank.is_(None), Paper.journal.isnot(None)).all()
-        for paper in unranked:
-            if paper.journal:
-                rank = lookup_journal_rank(paper.journal)
-                if rank:
-                    paper.set_journal_rank(rank.to_dict())
-        db.commit()
+            for name, fetcher in fetchers:
+                started = datetime.utcnow()
+                try:
+                    raw_papers = await fetcher.fetch(
+                        keywords=config.keywords, days=fetch_days
+                    )
+                    found, new = fetcher.save_papers(db, raw_papers)
+                    fetcher.log_fetch(db, started, found, new, status="success")
+                    stats["fetchers"][name] = {"found": found, "new": new}
+                    logger.info(
+                        "%s: 发现 %d 篇，新增 %d 篇", name, found, new
+                    )
+                except Exception as e:
+                    logger.exception("抓取器 %s 失败", name)
+                    fetcher.log_fetch(
+                        db, started, 0, 0, status="error", error_message=str(e)
+                    )
+                    stats["fetchers"][name] = {"error": str(e)}
+
+            # ── 2. 期刊分级标签 ──
+            unranked = db.query(Paper).filter(Paper.journal_rank.is_(None), Paper.journal.isnot(None)).all()
+            for paper in unranked:
+                if paper.journal:
+                    rank = lookup_journal_rank(paper.journal)
+                    if rank:
+                        paper.set_journal_rank(rank.to_dict())
+            db.commit()
 
         # ── 3. AI 处理 ──
         unprocessed = (
@@ -90,6 +91,7 @@ async def run_fetch_job(config: AppConfig, days: int | None = None) -> dict[str,
                         paper.title_zh = result.get("title_zh", "")
                         paper.summary_zh = result.get("summary_zh", "")
                         paper.relevance_score = result.get("relevance_score")
+                        paper.relevance_reason = result.get("relevance_reason", "")
                         if result.get("keywords"):
                             paper.set_keywords(result["keywords"])
                         paper.ai_processed = True

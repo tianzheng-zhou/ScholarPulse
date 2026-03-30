@@ -142,6 +142,7 @@ async def daily_view(
     d: str | None = None,
     source: str | None = None,
     min_score: str | None = None,
+    page: int = 1,
     db: Session = Depends(get_db),
 ):
     """日报视图：按论文发表日期浏览"""
@@ -190,6 +191,12 @@ async def daily_view(
 
     papers.sort(key=sort_key, reverse=True)
 
+    # 分页
+    total_count = len(papers)
+    total_pages = max(1, math.ceil(total_count / PAGE_SIZE))
+    page = max(1, min(page, total_pages))
+    papers = papers[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
+
     # 可用来源列表
     sources_list = db.query(Paper.source).distinct().all()
     available_sources = [s[0] for s in sources_list]
@@ -215,7 +222,9 @@ async def daily_view(
             "current_source": source,
             "current_min_score": score_filter,
             "sources": available_sources,
-            "total_count": len(papers),
+            "total_count": total_count,
+            "page": page,
+            "total_pages": total_pages,
             "date_counts": date_counts,
             "json": json,
         },

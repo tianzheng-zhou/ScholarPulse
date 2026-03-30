@@ -33,11 +33,19 @@ async def daily_index(
     request: Request,
     d: str | None = None,
     source: str | None = None,
-    min_score: float | None = None,
+    min_score: str | None = None,
     keyword: str | None = None,
     db: Session = Depends(get_db),
 ):
     """日报主页"""
+    # 解析评分筛选（兼容空字符串）
+    score_filter: float | None = None
+    if min_score:
+        try:
+            score_filter = float(min_score)
+        except ValueError:
+            score_filter = None
+
     # 确定日期
     if d:
         try:
@@ -72,8 +80,8 @@ async def daily_index(
     # 筛选
     if source:
         query = query.filter(Paper.source == source)
-    if min_score is not None:
-        query = query.filter(Paper.relevance_score >= min_score)
+    if score_filter is not None:
+        query = query.filter(Paper.relevance_score >= score_filter)
     if keyword:
         query = query.filter(Paper.keywords.contains(keyword))
 
@@ -103,7 +111,7 @@ async def daily_index(
             "prev_date": prev_date.isoformat(),
             "next_date": next_date.isoformat(),
             "current_source": source,
-            "current_min_score": min_score,
+            "current_min_score": score_filter,
             "current_keyword": keyword,
             "sources": available_sources,
             "total_count": len(papers),
@@ -117,7 +125,7 @@ async def daily_by_date(
     request: Request,
     d: str,
     source: str | None = None,
-    min_score: float | None = None,
+    min_score: str | None = None,
     keyword: str | None = None,
     db: Session = Depends(get_db),
 ):

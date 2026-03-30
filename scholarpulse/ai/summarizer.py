@@ -20,47 +20,55 @@ from ..config import AppConfig
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = "你是一位电子信息领域的资深学术助手，擅长分析学术论文。请始终用 JSON 格式回复。"
+SYSTEM_PROMPT = """\
+<role>你是一位电子信息领域的资深学术助手，擅长分析学术论文。</role>
+<output_format>请始终严格按照指定的 JSON 格式回复，不要输出任何其他文字。</output_format>"""
 
-USER_PROMPT_TEMPLATE = """用户的研究方向是：
-{research_description}
+USER_PROMPT_TEMPLATE = """\
+<task>分析以下学术论文，给出中文翻译、摘要总结、相关性评分和关键词提取。</task>
 
-用户关注的关键词：{keywords_list}
+<user_profile>
+<research_description>{research_description}</research_description>
+<keywords>{keywords_list}</keywords>
+</user_profile>
 
-请分析以下论文：
-标题：{title}
-摘要：{abstract}
-期刊：{journal}
+<paper>
+<title>{title}</title>
+<abstract>{abstract}</abstract>
+<journal>{journal}</journal>
+</paper>
 
-请严格返回如下 JSON 格式（不要包含其他文字）：
+<instructions>
+1. 将英文标题翻译为中文
+2. 用一句中文（30字以内）概括论文核心贡献，仅基于摘要内容
+3. 根据用户研究方向，对论文打 1-5 分相关性评分（5 为最相关）
+4. 简述评分理由
+5. 提取 3-5 个英文关键词
+6. 如果期刊是顶级期刊（如 Nature/Science/Advanced Materials 等），评分时可适当酌情加分
+</instructions>
+
+<output_schema>
+严格返回如下 JSON，不要包含任何其他内容：
 {{
   "title_zh": "中文标题",
   "summary_zh": "一句话中文总结（30字以内）",
   "relevance_score": 4,
   "relevance_reason": "简述为什么给这个分数",
-  "keywords": ["关键词1", "关键词2", "关键词3"]
+  "keywords": ["keyword1", "keyword2", "keyword3"]
 }}
-
-注意：
-1. relevance_score 范围 1-5，5 为最相关
-2. 仅基于摘要内容进行总结
-3. 关键词 3-5 个，用英文
-4. 如果期刊是顶级期刊，可以在评分时适当酌情"""
+</output_schema>"""
 
 
 class AISummarizer:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
-        extra_kwargs: dict[str, Any] = {}
-        if not config.llm.enable_thinking:
-            extra_kwargs["default_headers"] = {"x-dashscope-enable-thinking": "false"}
         self.client = AsyncOpenAI(
             api_key=config.llm.api_key,
             base_url=config.llm.base_url,
-            **extra_kwargs,
         )
         self.model = config.llm.model
         self.semaphore = asyncio.Semaphore(config.llm.max_concurrent)
+        self._enable_thinking = config.llm.enable_thinking
 
     async def process_paper(
         self, title: str, abstract: str, journal: str = ""
@@ -85,6 +93,9 @@ class AISummarizer:
     ) -> dict[str, Any] | None:
         for attempt in range(max_retries):
             try:
+                extra_body: dict[str, Any] = {
+                    "enable_thinking": self._enable_thinking,
+                }
                 resp = await self.client.chat.completions.create(
                     model=self.model,
                     messages=[
@@ -93,6 +104,7 @@ class AISummarizer:
                     ],
                     temperature=0.3,
                     response_format={"type": "json_object"},
+                    extra_body=extra_body,
                 )
 
                 content = resp.choices[0].message.content

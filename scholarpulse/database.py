@@ -22,8 +22,13 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import BASE_DIR
 
-DATABASE_PATH = BASE_DIR / "scholarpulse.db"
-DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+import os
+
+DATA_DIR = BASE_DIR / "data"
+DATA_DIR.mkdir(exist_ok=True)
+
+DATABASE_PATH = DATA_DIR / "scholarpulse.db"
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATABASE_PATH}")
 
 
 class Base(DeclarativeBase):

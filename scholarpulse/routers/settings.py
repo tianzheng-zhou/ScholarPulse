@@ -17,7 +17,7 @@ from sse_starlette.sse import EventSourceResponse
 from sqlalchemy.orm import Session
 
 from ..config import BASE_DIR, AppConfig, load_config, save_config
-from ..database import FetchLog, SessionLocal
+from ..database import FetchLog, Paper, SessionLocal
 from ..scheduler import run_fetch_job
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,38 @@ async def manual_fetch(
         request,
         "fetch_result.html",
         {
-            "stats": {"message": "拓取任务已在后台启动，请稍后刷新日报页面查看结果。"},
+            "stats": {"message": "拓取任务已在后台启动，请稍后刷新论文库页面查看结果。"},
+            "json": json,
+        },
+    )
+
+
+@router.post("/retry-failed")
+async def retry_failed(
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
+    """重置所有失败论文的 ai_fail_count，使其可被重新处理"""
+    db = SessionLocal()
+    try:
+        count = db.query(Paper).filter(Paper.ai_fail_count >= 3).update(
+            {Paper.ai_fail_count: 0}, synchronize_session="fetch"
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    config = load_config()
+
+    async def _bg_retry() -> None:
+        await run_fetch_job(config, days=0)
+
+    background_tasks.add_task(_bg_retry)
+    return templates.TemplateResponse(
+        request,
+        "fetch_result.html",
+        {
+            "stats": {"message": f"已重置 {count} 篇失败论文，后台重新处理中。"},
             "json": json,
         },
     )
@@ -286,6 +317,9 @@ async def settings_chat(body: ChatMessage):
 
     messages.append({"role": "user", "content": body.message})
 
+    # 设置助手固定使用 qwen3.5-plus，不受用户 LLM 配置影响
+    _ASSISTANT_MODEL = "qwen3.5-plus"
+
     client = AsyncOpenAI(
         api_key=config.llm.api_key,
         base_url=config.llm.base_url,
@@ -294,7 +328,7 @@ async def settings_chat(body: ChatMessage):
     async def _stream():
         try:
             stream = await client.chat.completions.create(
-                model=config.llm.model,
+                model=_ASSISTANT_MODEL,
                 messages=messages,
                 temperature=0.7,
                 stream=True,

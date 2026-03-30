@@ -71,9 +71,13 @@ async def run_fetch_job(config: AppConfig, days: int | None = None) -> dict[str,
             db.commit()
 
         # ── 3. AI 处理 ──
+        MAX_AI_RETRIES = 3
         unprocessed = (
             db.query(Paper)
-            .filter(Paper.ai_processed == False)  # noqa: E712
+            .filter(
+                Paper.ai_processed == False,  # noqa: E712
+                (Paper.ai_fail_count < MAX_AI_RETRIES) | (Paper.ai_fail_count.is_(None)),
+            )
             .all()
         )
 
@@ -86,17 +90,33 @@ async def run_fetch_job(config: AppConfig, days: int | None = None) -> dict[str,
 
             async def _process_one(paper_id: int) -> None:
                 nonlocal processed_count
-                # 每篇论文使用独立 session，避免并发 commit/rollback 互相干扰
+                # 1) 读取论文数据后立即关闭 session，不在 AI 调用期间占用连接
                 sess = SessionLocal()
                 try:
-                    paper = sess.query(Paper).get(paper_id)
+                    paper = sess.query(Paper).filter(Paper.id == paper_id).first()
                     if not paper or paper.ai_processed:
                         return
+                    title = paper.title
+                    abstract = paper.abstract or ""
+                    journal = paper.journal or ""
+                finally:
+                    sess.close()
+
+                # 2) 调用 AI（此时不持有任何 DB 连接）
+                try:
                     result = await summarizer.process_paper(
-                        title=paper.title,
-                        abstract=paper.abstract or "",
-                        journal=paper.journal or "",
+                        title=title, abstract=abstract, journal=journal,
                     )
+                except Exception:
+                    logger.exception("AI 处理论文 %d 失败", paper_id)
+                    result = None
+
+                # 3) 写回结果
+                sess = SessionLocal()
+                try:
+                    paper = sess.query(Paper).filter(Paper.id == paper_id).first()
+                    if not paper:
+                        return
                     if result:
                         paper.title_zh = result.get("title_zh", "")
                         paper.summary_zh = result.get("summary_zh", "")
@@ -114,8 +134,17 @@ async def run_fetch_job(config: AppConfig, days: int | None = None) -> dict[str,
                                 processed_count, total,
                                 processed_count / total * 100,
                             )
+                    else:
+                        # AI 失败：递增失败计数，不标记已处理
+                        paper.ai_fail_count = (paper.ai_fail_count or 0) + 1
+                        sess.commit()
+                        if paper.ai_fail_count >= MAX_AI_RETRIES:
+                            logger.warning(
+                                "论文 %d 已达最大重试次数 %d，标记为失败",
+                                paper_id, MAX_AI_RETRIES,
+                            )
                 except Exception:
-                    logger.exception("AI 处理论文 %d 失败", paper_id)
+                    logger.exception("AI 处理论文 %d 保存失败", paper_id)
                     sess.rollback()
                 finally:
                     sess.close()

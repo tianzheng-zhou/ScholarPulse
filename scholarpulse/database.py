@@ -61,6 +61,7 @@ class Paper(Base):
     influential_citation_count = Column(Integer)
     doi = Column(Text)
     relevance_reason = Column(Text)
+    ai_fail_count = Column(Integer, default=0)
 
     def get_authors(self) -> list[str]:
         if not self.authors:
@@ -102,7 +103,14 @@ class FetchLog(Base):
 
 # ── Engine & Session ──
 
-engine = create_engine(DATABASE_URL, echo=False)
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_size=20,
+    max_overflow=40,
+    pool_timeout=120,
+    pool_pre_ping=True,
+)
 
 
 @event.listens_for(engine, "connect")
@@ -132,6 +140,7 @@ def _migrate_columns() -> None:
     existing = {row[1] for row in cursor.fetchall()}
     migrations = [
         ("relevance_reason", "TEXT"),
+        ("ai_fail_count", "INTEGER DEFAULT 0"),
     ]
     for col_name, col_type in migrations:
         if col_name not in existing:

@@ -80,7 +80,9 @@ async def library_index(
     if status == "processed":
         query = query.filter(Paper.ai_processed == True)  # noqa: E712
     elif status == "unprocessed":
-        query = query.filter(Paper.ai_processed == False)  # noqa: E712
+        query = query.filter(Paper.ai_processed == False, (Paper.ai_fail_count < 3) | (Paper.ai_fail_count.is_(None)))  # noqa: E712
+    elif status == "failed":
+        query = query.filter(Paper.ai_fail_count >= 3)
 
     # 排序
     if sort == "score":
@@ -103,7 +105,8 @@ async def library_index(
     # 统计概要
     total_all = db.query(Paper).count()
     processed_count = db.query(Paper).filter(Paper.ai_processed == True).count()  # noqa: E712
-    unprocessed_count = total_all - processed_count
+    failed_count = db.query(Paper).filter(Paper.ai_fail_count >= 3).count()
+    unprocessed_count = total_all - processed_count - failed_count
 
     return templates.TemplateResponse(
         request,
@@ -115,6 +118,7 @@ async def library_index(
             "total": total,
             "total_all": total_all,
             "processed_count": processed_count,
+            "failed_count": failed_count,
             "unprocessed_count": unprocessed_count,
             "query": q or "",
             "current_source": source,

@@ -22,7 +22,9 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
 <role>你是一位资深学术助手，擅长分析各领域学术论文。</role>
-<output_format>请始终严格按照指定的 JSON 格式回复，不要输出任何其他文字。</output_format>"""
+<output_format>请始终严格按照指定的 JSON 格式回复，不要输出任何其他文字。
+你的 JSON 必须包含全部 5 个字段：title_zh、keywords、summary_zh、relevance_score、relevance_reason。
+缺少任何字段都会导致解析失败。</output_format>"""
 
 USER_PROMPT_TEMPLATE = """\
 <task>分析以下学术论文，给出中文翻译、摘要总结、相关性评分和关键词提取。</task>
@@ -79,13 +81,13 @@ USER_PROMPT_TEMPLATE = """\
 </scoring_rubric>
 
 <output_schema>
-严格返回如下 JSON，不要包含任何其他内容：
+严格返回如下 JSON，必须包含全部 5 个字段，不得省略任何字段：
 {{
   "title_zh": "中文标题",
+  "keywords": ["keyword1", "keyword2", "keyword3"],
   "summary_zh": "3-5 句中文总结，包括研究问题、方法、主要结果和应用价值",
   "relevance_score": 4,
-  "relevance_reason": "详细说明评分理由，包括与用户研究方向的关联点和参考价值",
-  "keywords": ["keyword1", "keyword2", "keyword3"]
+  "relevance_reason": "评分理由（1-2句）"
 }}
 </output_schema>"""
 
@@ -113,14 +115,11 @@ class AISummarizer:
         self, title: str, abstract: str, journal: str = ""
     ) -> dict[str, Any] | None:
         """处理单篇论文，返回 AI 分析结果字典"""
-        if not abstract:
-            return None
-
         prompt = USER_PROMPT_TEMPLATE.format(
             research_description=self.config.research_description,
             keywords_list=", ".join(self.config.keywords),
             title=title,
-            abstract=abstract[:3000],  # 截断过长摘要
+            abstract=abstract[:3000] if abstract.strip() else "无摘要，请仅根据标题和期刊信息进行分析",
             journal=journal or "未知",
         )
 
@@ -132,6 +131,12 @@ class AISummarizer:
     async def _call_llm(
         self, prompt: str, max_retries: int = 3
     ) -> dict[str, Any] | None:
+        # 构建初始消息
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ]
+
         for attempt in range(max_retries):
             try:
                 extra_body: dict[str, Any] = {
@@ -139,11 +144,9 @@ class AISummarizer:
                 }
                 resp = await self.client.chat.completions.create(
                     model=self.model,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt},
-                    ],
+                    messages=messages,
                     temperature=0.3,
+                    max_tokens=4096,
                     response_format={"type": "json_object"},
                     extra_body=extra_body,
                 )
@@ -167,18 +170,32 @@ class AISummarizer:
                     continue
 
                 result = json.loads(content)
-                # 校验必要字段
-                missing = self.REQUIRED_FIELDS - set(result.keys())
-                if not missing:
-                    # 确保分数在范围内
-                    score = float(result["relevance_score"])
-                    result["relevance_score"] = max(1.0, min(5.0, score))
-                    return result
 
-                logger.warning(
-                    "AI 返回缺少字段 %s (attempt %d/%d): %s",
-                    missing, attempt + 1, max_retries, content[:200],
-                )
+                # 严格校验所有必要字段
+                missing = self.REQUIRED_FIELDS - set(result.keys())
+                if missing:
+                    logger.warning(
+                        "AI 返回缺少字段 %s (attempt %d/%d): %s",
+                        missing, attempt + 1, max_retries, content[:200],
+                    )
+                    # 重试时追加失败回答 + 纠正指令，让模型知道漏了什么
+                    messages = [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                        {"role": "assistant", "content": content},
+                        {"role": "user", "content": (
+                            f"你的 JSON 缺少以下必要字段：{', '.join(sorted(missing))}。"
+                            "请重新生成完整的 JSON，必须包含全部 5 个字段："
+                            "title_zh, keywords, summary_zh, relevance_score, relevance_reason。"
+                            "不要省略任何字段。"
+                        )},
+                    ]
+                    continue
+
+                # 确保分数在范围内
+                score = float(result["relevance_score"])
+                result["relevance_score"] = max(1.0, min(5.0, score))
+                return result
 
             except json.JSONDecodeError as e:
                 logger.warning(

@@ -1,0 +1,53 @@
+# ScholarPulse 配置示例
+# 复制此文件为 config.yaml 并根据实际情况修改
+
+# 研究方向描述（用于 AI 评估论文相关性）
+research_description: >-
+  Your research description here, e.g. Research on Thin-Film Transistors (TFTs)
+  focusing on novel semiconductor materials, flexible electronics, etc.
+
+# 关键词列表（用于论文检索和相关性评分）
+keywords:
+  - keyword1
+  - keyword2
+  - keyword3
+
+# 数据源配置
+sources:
+  semantic_scholar:
+    enabled: true
+  arxiv:
+    enabled: true
+    categories:
+      - physics.app-ph
+      - cond-mat.mtrl-sci
+  openalex:
+    enabled: false
+  ieee_xplore:
+    enabled: false
+  crossref:
+    enabled: false
+  rss:
+    enabled: false
+    feeds:
+      - name: Example Journal
+        url: https://example.com/rss
+
+# LLM 配置（用于论文分析）
+# API Key 请在 .env 文件中设置 DASHSCOPE_API_KEY
+llm:
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen3.5-plus
+  max_concurrent: 100
+  enable_thinking: false
+
+# 定时任务配置
+scheduler:
+  enabled: false
+  cron: "0 8 * * *"    # 每天早上 8 点执行
+  fetch_days: 3         # 抓取最近几天的论文
+
+# 服务器配置
+server:
+  host: 127.0.0.1
+  port: 15471

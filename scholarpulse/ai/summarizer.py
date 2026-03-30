@@ -93,9 +93,17 @@ USER_PROMPT_TEMPLATE = """\
 class AISummarizer:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
+        import httpx as _httpx
         self.client = AsyncOpenAI(
             api_key=config.llm.api_key,
             base_url=config.llm.base_url,
+            http_client=_httpx.AsyncClient(
+                limits=_httpx.Limits(
+                    max_connections=config.llm.max_concurrent + 10,
+                    max_keepalive_connections=config.llm.max_concurrent,
+                ),
+                timeout=_httpx.Timeout(120.0, connect=10.0),
+            ),
         )
         self.model = config.llm.model
         self.semaphore = asyncio.Semaphore(config.llm.max_concurrent)
@@ -119,6 +127,8 @@ class AISummarizer:
         async with self.semaphore:
             return await self._call_llm(prompt)
 
+    REQUIRED_FIELDS = {"title_zh", "summary_zh", "relevance_score", "relevance_reason", "keywords"}
+
     async def _call_llm(
         self, prompt: str, max_retries: int = 3
     ) -> dict[str, Any] | None:
@@ -138,26 +148,42 @@ class AISummarizer:
                     extra_body=extra_body,
                 )
 
+                # 检查是否因为 token 限制而截断
+                finish_reason = resp.choices[0].finish_reason
+                if finish_reason == "length":
+                    logger.warning(
+                        "AI 输出被截断 (finish_reason=length), 重试 %d/%d",
+                        attempt + 1, max_retries,
+                    )
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2 ** (attempt + 1))
+                    continue
+
                 content = resp.choices[0].message.content
                 if not content:
-                    return None
+                    logger.warning("AI 返回空内容, 重试 %d/%d", attempt + 1, max_retries)
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2 ** (attempt + 1))
+                    continue
 
                 result = json.loads(content)
                 # 校验必要字段
-                if "title_zh" in result and "relevance_score" in result:
+                missing = self.REQUIRED_FIELDS - set(result.keys())
+                if not missing:
                     # 确保分数在范围内
                     score = float(result["relevance_score"])
                     result["relevance_score"] = max(1.0, min(5.0, score))
                     return result
-                else:
-                    logger.warning("AI 返回缺少必要字段: %s", content[:200])
-                    return None
 
-            except json.JSONDecodeError:
                 logger.warning(
-                    "AI 返回 JSON 解析失败 (attempt %d/%d)",
-                    attempt + 1,
-                    max_retries,
+                    "AI 返回缺少字段 %s (attempt %d/%d): %s",
+                    missing, attempt + 1, max_retries, content[:200],
+                )
+
+            except json.JSONDecodeError as e:
+                logger.warning(
+                    "AI 返回 JSON 解析失败 (attempt %d/%d): %s",
+                    attempt + 1, max_retries, e,
                 )
             except Exception:
                 logger.exception(

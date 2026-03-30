@@ -19,7 +19,7 @@ load_dotenv(BASE_DIR / ".env")
 class LLMConfig:
     base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     model: str = "qwen3.5-plus"
-    max_concurrent: int = 5
+    max_concurrent: int = 30
     enable_thinking: bool = False
     api_key: str = ""
 

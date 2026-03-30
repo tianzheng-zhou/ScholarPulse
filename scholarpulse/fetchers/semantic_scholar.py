@@ -18,8 +18,15 @@ FIELDS = (
     "paperId,externalIds,title,abstract,authors,publicationDate,"
     "journal,citationCount,influentialCitationCount,url"
 )
-# 免费额度: 100 请求/5 分钟 → 每次请求间隔至少 3 秒
-REQUEST_INTERVAL = 3.2
+# 有 API Key 时 1 req/s，无 Key 时 100 req/5min → 间隔 3.2s
+REQUEST_INTERVAL_WITH_KEY = 1.1
+REQUEST_INTERVAL_NO_KEY = 3.2
+
+
+def _get_s2_api_key() -> str | None:
+    import os
+    key = os.getenv("S2_API_KEY", "").strip()
+    return key or None
 
 
 class SemanticScholarFetcher(BaseFetcher):
@@ -35,7 +42,13 @@ class SemanticScholarFetcher(BaseFetcher):
         start_date = end_date - timedelta(days=days)
         date_range = f"{start_date}:{end_date}"
 
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        api_key = _get_s2_api_key()
+        headers = {"x-api-key": api_key} if api_key else {}
+        interval = REQUEST_INTERVAL_WITH_KEY if api_key else REQUEST_INTERVAL_NO_KEY
+        if api_key:
+            logger.info("使用 S2 API Key，限速 1 req/s")
+
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers=headers) as client:
             for kw in keywords:
                 try:
                     papers = await self._search_keyword(
@@ -48,7 +61,7 @@ class SemanticScholarFetcher(BaseFetcher):
                 except Exception:
                     logger.exception("Semantic Scholar 搜索关键词 '%s' 失败", kw)
 
-                await asyncio.sleep(REQUEST_INTERVAL)
+                await asyncio.sleep(interval)
 
         logger.info(
             "Semantic Scholar 抓取完成: %d 篇论文（去重后）", len(results)
@@ -99,7 +112,7 @@ class SemanticScholarFetcher(BaseFetcher):
                 break
 
             offset = next_offset
-            await asyncio.sleep(REQUEST_INTERVAL)
+            await asyncio.sleep(REQUEST_INTERVAL_WITH_KEY if _get_s2_api_key() else REQUEST_INTERVAL_NO_KEY)
 
         return papers
 

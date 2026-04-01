@@ -12,6 +12,11 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from .ai.summarizer import AISummarizer
+from .ai.embedding import (
+    build_paper_text,
+    generate_embeddings_batch,
+    serialize_embedding,
+)
 from .config import AppConfig
 from .database import Paper, SessionLocal, get_db
 from .fetchers.arxiv import ArxivFetcher
@@ -194,6 +199,33 @@ async def run_fetch_job(config: AppConfig, days: int | None = None) -> dict[str,
             await asyncio.gather(*[_process_one(pid) for pid in paper_ids])
 
             logger.info("AI 处理完成: %d/%d 篇", processed_count, total)
+
+        # ── 5. 向量生成（为无 embedding 的论文批量生成向量）──
+        no_emb = (
+            db.query(Paper)
+            .filter(Paper.embedding.is_(None), Paper.title.isnot(None))
+            .all()
+        )
+        if no_emb and config.llm.api_key:
+            logger.info("开始为 %d 篇论文生成向量...", len(no_emb))
+            texts = [build_paper_text(p.title, p.abstract) for p in no_emb]
+            try:
+                vectors = await generate_embeddings_batch(
+                    texts,
+                    instruct="Represent the academic paper for retrieval",
+                )
+                emb_count = 0
+                for paper, vec in zip(no_emb, vectors):
+                    if vec is not None:
+                        paper.embedding = serialize_embedding(vec)
+                        emb_count += 1
+                db.commit()
+                stats["embeddings_generated"] = emb_count
+                logger.info("向量生成完成: %d/%d 篇", emb_count, len(no_emb))
+            except Exception:
+                logger.exception("向量生成失败")
+                db.rollback()
+                stats["embeddings_generated"] = {"error": "向量生成失败"}
 
     finally:
         db.close()

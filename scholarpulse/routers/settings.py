@@ -19,6 +19,11 @@ from sqlalchemy.orm import Session
 from ..config import BASE_DIR, AppConfig, load_config, save_config
 from ..database import FetchLog, Paper, SessionLocal
 from ..scheduler import run_fetch_job
+from ..ai.embedding import (
+    build_paper_text,
+    generate_embeddings_batch,
+    serialize_embedding,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +192,57 @@ async def retry_failed(
         "fetch_result.html",
         {
             "stats": {"message": f"已重置 {count} 篇失败论文，后台重新处理中。"},
+            "json": json,
+        },
+    )
+
+
+@router.post("/generate-embeddings")
+async def generate_embeddings_route(
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
+    """为所有缺少向量的论文批量生成 embedding"""
+    db = SessionLocal()
+    try:
+        pending = db.query(Paper).filter(
+            Paper.embedding.is_(None), Paper.title.isnot(None)
+        ).count()
+    finally:
+        db.close()
+
+    async def _bg_embed() -> None:
+        sess = SessionLocal()
+        try:
+            papers = sess.query(Paper).filter(
+                Paper.embedding.is_(None), Paper.title.isnot(None)
+            ).all()
+            if not papers:
+                return
+            texts = [build_paper_text(p.title, p.abstract) for p in papers]
+            vectors = await generate_embeddings_batch(
+                texts,
+                instruct="Represent the academic paper for retrieval",
+            )
+            count = 0
+            for paper, vec in zip(papers, vectors):
+                if vec is not None:
+                    paper.embedding = serialize_embedding(vec)
+                    count += 1
+            sess.commit()
+            logger.info("手动向量生成完成: %d/%d 篇", count, len(papers))
+        except Exception:
+            logger.exception("手动向量生成失败")
+            sess.rollback()
+        finally:
+            sess.close()
+
+    background_tasks.add_task(_bg_embed)
+    return templates.TemplateResponse(
+        request,
+        "fetch_result.html",
+        {
+            "stats": {"message": f"向量生成任务已启动，{pending} 篇论文待处理。请稍后刷新查看进度。"},
             "json": json,
         },
     )

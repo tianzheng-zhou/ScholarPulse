@@ -6,7 +6,7 @@
 <div class="flex items-center justify-between mb-5">
     <h1 class="text-lg font-semibold text-gray-800">
         📚 论文库
-        <span class="text-sm font-normal text-gray-500 ml-2">共 {{ total_all }} 篇（已处理 {{ processed_count }}，未处理 {{ unprocessed_count }}{% if failed_count %}，失败 {{ failed_count }}{% endif %}）</span>
+        <span class="text-sm font-normal text-gray-500 ml-2">共 {{ total_all }} 篇（已处理 {{ processed_count }}，未处理 {{ unprocessed_count }}{% if failed_count %}，失败 {{ failed_count }}{% endif %}，已向量化 {{ embedding_count }}）</span>
     </h1>
     <a href="/daily" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">📅 日报视图 →</a>
 </div>
@@ -19,6 +19,12 @@
             <input type="text" name="q" value="{{ query }}" placeholder="搜索标题、摘要、关键词..."
                    class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400">
         </div>
+
+        <!-- 搜索模式 -->
+        <select name="search_mode" class="text-sm border border-gray-200 rounded px-2 py-2">
+            <option value="semantic" {{ 'selected' if current_search_mode == 'semantic' }}>🧠 语义搜索</option>
+            <option value="keyword" {{ 'selected' if current_search_mode == 'keyword' }}>🔤 关键词</option>
+        </select>
 
         <!-- 来源 -->
         <select name="source" class="text-sm border border-gray-200 rounded px-2 py-2">
@@ -44,7 +50,7 @@
             <option value="failed" {{ 'selected' if current_status == 'failed' }}>处理失败</option>
         </select>
 
-        <!-- 排序 -->
+        <!-- 排序（语义搜索时按相关度排序，隐藏此选项） -->
         <select name="sort" class="text-sm border border-gray-200 rounded px-2 py-2">
             <option value="date_desc" {{ 'selected' if current_sort == 'date_desc' }}>最新发表</option>
             <option value="date_asc" {{ 'selected' if current_sort == 'date_asc' }}>最早发表</option>
@@ -91,11 +97,25 @@
         </button>
     </form>
     {% endif %}
+    {% if embedding_count < total_all %}
+    <form method="post" action="/generate-embeddings" class="flex items-center gap-3">
+        <button type="submit" class="bg-teal-500 text-white px-4 py-1.5 rounded text-sm hover:bg-teal-600 transition">
+            🧠 生成向量（{{ total_all - embedding_count }} 篇待处理）
+        </button>
+    </form>
+    {% endif %}
 </div>
 
 <!-- 查询结果计数 -->
 {% if query or current_source or current_min_score or current_status %}
-<p class="text-sm text-gray-500 mb-3">找到 {{ total }} 篇论文</p>
+<p class="text-sm text-gray-500 mb-3">
+    找到 {{ total }} 篇论文
+    {% if query and current_search_mode == 'semantic' %}
+    <span class="text-teal-600">（语义搜索）</span>
+    {% elif query %}
+    <span class="text-blue-600">（关键词搜索）</span>
+    {% endif %}
+</p>
 {% endif %}
 
 <!-- 论文列表 -->

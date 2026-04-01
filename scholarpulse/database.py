@@ -13,6 +13,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     Integer,
+    LargeBinary,
     Text,
     UniqueConstraint,
     create_engine,
@@ -63,6 +64,7 @@ class Paper(Base):
     sources = Column(Text)  # JSON list, e.g. ["arxiv", "semantic_scholar"]
     relevance_reason = Column(Text)
     ai_fail_count = Column(Integer, default=0)
+    embedding = Column(LargeBinary)  # 向量 (struct-packed float32 array)
 
     def get_sources(self) -> list[str]:
         if not self.sources:
@@ -154,6 +156,7 @@ def _migrate_columns() -> None:
         ("relevance_reason", "TEXT"),
         ("ai_fail_count", "INTEGER DEFAULT 0"),
         ("sources", "TEXT"),
+        ("embedding", "BLOB"),
     ]
     for col_name, col_type in migrations:
         if col_name not in existing:

@@ -60,24 +60,36 @@ async def run_fetch_job(config: AppConfig, days: int | None = None) -> dict[str,
             if rss_cfg and rss_cfg.enabled and rss_cfg.feeds:
                 fetchers.append(("rss", RSSFetcher(feeds=rss_cfg.feeds)))
 
-            for name, fetcher in fetchers:
+            # 并发抓取所有数据源
+            async def _fetch_one(name: str, fetcher: Any) -> tuple[str, Any, list[Any], datetime, Exception | None]:
                 started = datetime.utcnow()
                 try:
                     raw_papers = await fetcher.fetch(
                         keywords=config.keywords, days=fetch_days
                     )
+                    return (name, fetcher, raw_papers, started, None)
+                except Exception as e:
+                    logger.exception("抓取器 %s 失败", name)
+                    return (name, fetcher, [], started, e)
+
+            fetch_results = await asyncio.gather(
+                *[_fetch_one(n, f) for n, f in fetchers]
+            )
+
+            # 顺序保存结果（共享 DB session）
+            for name, fetcher, raw_papers, started, err in fetch_results:
+                if err is not None:
+                    fetcher.log_fetch(
+                        db, started, 0, 0, status="error", error_message=str(err)
+                    )
+                    stats["fetchers"][name] = {"error": str(err)}
+                else:
                     found, new = fetcher.save_papers(db, raw_papers)
                     fetcher.log_fetch(db, started, found, new, status="success")
                     stats["fetchers"][name] = {"found": found, "new": new}
                     logger.info(
                         "%s: 发现 %d 篇，新增 %d 篇", name, found, new
                     )
-                except Exception as e:
-                    logger.exception("抓取器 %s 失败", name)
-                    fetcher.log_fetch(
-                        db, started, 0, 0, status="error", error_message=str(e)
-                    )
-                    stats["fetchers"][name] = {"error": str(e)}
 
             # ── 2. CrossRef 元数据补全 ──
             crossref_cfg = config.sources.get("crossref")

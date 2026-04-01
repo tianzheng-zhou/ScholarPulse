@@ -33,11 +33,28 @@ class OpenAlexFetcher(BaseFetcher):
         end_date = date.today()
         start_date = end_date - timedelta(days=days)
 
-        # 构建搜索查询：所有关键词用 OR 连接
-        search_query = "|".join(keywords)
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            for kw in keywords:
+                try:
+                    papers = await self._search_keyword(client, kw, start_date, end_date)
+                    for p in papers:
+                        if p.source_id not in seen_ids:
+                            seen_ids.add(p.source_id)
+                            results.append(p)
+                except Exception:
+                    logger.exception("OpenAlex 搜索关键词 '%s' 失败", kw)
+                await asyncio.sleep(0.2)
+
+        logger.info("OpenAlex 抓取完成: %d 篇论文（去重后）", len(results))
+        return results
+
+    async def _search_keyword(
+        self, client: httpx.AsyncClient, keyword: str, start_date: date, end_date: date
+    ) -> list[RawPaper]:
+        papers: list[RawPaper] = []
 
         params: dict[str, Any] = {
-            "search": search_query,
+            "search": keyword,
             "filter": f"from_publication_date:{start_date},to_publication_date:{end_date}",
             "per_page": PER_PAGE,
             "sort": "publication_date:desc",
@@ -46,44 +63,40 @@ class OpenAlexFetcher(BaseFetcher):
         if self.email:
             params["mailto"] = self.email
 
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            page = 1
-            while True:
-                params["page"] = page
-                try:
+        page = 1
+        while True:
+            params["page"] = page
+            try:
+                resp = await client.get(f"{API_BASE}/works", params=params)
+                if resp.status_code == 429:
+                    logger.warning("OpenAlex 速率限制，等待 10 秒")
+                    await asyncio.sleep(10)
                     resp = await client.get(f"{API_BASE}/works", params=params)
-                    if resp.status_code == 429:
-                        logger.warning("OpenAlex 速率限制，等待 10 秒")
-                        await asyncio.sleep(10)
-                        resp = await client.get(f"{API_BASE}/works", params=params)
-                    resp.raise_for_status()
-                except Exception:
-                    logger.exception("OpenAlex 请求失败 (page=%d)", page)
-                    break
+                resp.raise_for_status()
+            except Exception:
+                logger.exception("OpenAlex 请求失败 (keyword='%s', page=%d)", keyword, page)
+                break
 
-                data = resp.json()
-                works = data.get("results", [])
+            data = resp.json()
+            works = data.get("results", [])
 
-                if not works:
-                    break
+            if not works:
+                break
 
-                for item in works:
-                    paper = self._parse_work(item)
-                    if paper and paper.source_id not in seen_ids:
-                        seen_ids.add(paper.source_id)
-                        results.append(paper)
+            for item in works:
+                paper = self._parse_work(item)
+                if paper:
+                    papers.append(paper)
 
-                # 是否还有下一页
-                meta = data.get("meta", {})
-                total_count = meta.get("count", 0)
-                if page * PER_PAGE >= total_count or page * PER_PAGE >= 1000:
-                    break
+            meta = data.get("meta", {})
+            total_count = meta.get("count", 0)
+            if page * PER_PAGE >= total_count or page * PER_PAGE >= 1000:
+                break
 
-                page += 1
-                await asyncio.sleep(0.2)  # polite
+            page += 1
+            await asyncio.sleep(0.2)
 
-        logger.info("OpenAlex 抓取完成: %d 篇论文（去重后）", len(results))
-        return results
+        return papers
 
     @staticmethod
     def _reconstruct_abstract(inverted_index: dict[str, list[int]]) -> str:

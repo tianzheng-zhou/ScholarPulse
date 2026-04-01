@@ -55,6 +55,65 @@
                         >{% if config.sources.get('arxiv') %}{{ config.sources['arxiv'].categories | join('\n') }}{% endif %}</textarea>
                 </div>
             </div>
+
+            <div>
+                <label class="flex items-center gap-3">
+                    <input type="checkbox" name="openalex_enabled" value="true"
+                        {{ 'checked' if config.sources.get('openalex') and config.sources['openalex'].enabled }}
+                        class="rounded text-indigo-600">
+                    <span class="text-sm font-medium">OpenAlex</span>
+                    <span class="text-xs text-gray-400">全学科开放元数据，免费</span>
+                </label>
+                <div class="ml-7 mt-2">
+                    <label class="block text-xs text-gray-500 mb-1">邮箱（可选，填写后进入 polite pool 提升速率至 ~100 req/s）</label>
+                    <input type="email" name="openalex_email" value="{% if config.sources.get('openalex') %}{{ config.sources['openalex'].email }}{% endif %}"
+                        placeholder="your@email.com"
+                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+            </div>
+
+            <div>
+                <label class="flex items-center gap-3">
+                    <input type="checkbox" name="ieee_enabled" value="true"
+                        {{ 'checked' if config.sources.get('ieee_xplore') and config.sources['ieee_xplore'].enabled }}
+                        class="rounded text-indigo-600">
+                    <span class="text-sm font-medium">IEEE Xplore</span>
+                    <span class="text-xs text-gray-400">需 API Key（.env 中设置 IEEE_API_KEY），免费 200 次/天</span>
+                </label>
+            </div>
+
+            <div>
+                <label class="flex items-center gap-3">
+                    <input type="checkbox" name="crossref_enabled" value="true"
+                        {{ 'checked' if config.sources.get('crossref') and config.sources['crossref'].enabled }}
+                        class="rounded text-indigo-600">
+                    <span class="text-sm font-medium">CrossRef</span>
+                    <span class="text-xs text-gray-400">辅助层：补全引用数与期刊元数据</span>
+                </label>
+                <div class="ml-7 mt-2">
+                    <label class="block text-xs text-gray-500 mb-1">邮箱（可选，填写后进入 polite pool 提升速率至 ~50 req/s）</label>
+                    <input type="email" name="crossref_email" value="{% if config.sources.get('crossref') %}{{ config.sources['crossref'].email }}{% endif %}"
+                        placeholder="your@email.com"
+                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+            </div>
+
+            <div>
+                <label class="flex items-center gap-3">
+                    <input type="checkbox" name="rss_enabled" value="true"
+                        {{ 'checked' if config.sources.get('rss') and config.sources['rss'].enabled }}
+                        class="rounded text-indigo-600">
+                    <span class="text-sm font-medium">RSS 订阅</span>
+                    <span class="text-xs text-gray-400">指定期刊的 RSS/Atom Feed</span>
+                </label>
+                <div class="ml-7 mt-2">
+                    <p class="text-xs text-gray-500 mb-1">RSS 源列表（每行格式：<code>名称|URL</code>）</p>
+                    <textarea name="rss_feeds" rows="5"
+                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="Nature Electronics|https://www.nature.com/natelectron.rss">{% if config.sources.get('rss') and config.sources['rss'].feeds %}{% for f in config.sources['rss'].feeds %}{{ f.name }}|{{ f.url }}{% if not loop.last %}
+{% endif %}{% endfor %}{% endif %}</textarea>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -211,6 +270,16 @@ const FIELD_SELECTOR = {
     'research_description': 'textarea[name="research_description"]',
     'arxiv_categories': 'textarea[name="arxiv_categories"]',
     'scheduler_cron': 'input[name="scheduler_cron"]',
+    'source_semantic_scholar': 'input[name="ss_enabled"]',
+    'source_arxiv': 'input[name="arxiv_enabled"]',
+    'source_openalex': 'input[name="openalex_enabled"]',
+    'source_ieee_xplore': 'input[name="ieee_enabled"]',
+    'source_crossref': 'input[name="crossref_enabled"]',
+    'source_rss': 'input[name="rss_enabled"]',
+    'openalex_email': 'input[name="openalex_email"]',
+    'crossref_email': 'input[name="crossref_email"]',
+    'rss_feeds': 'textarea[name="rss_feeds"]',
+    'fetch_days': 'input[name="fetch_days"]',
 };
 
 function toggleChat() {
@@ -324,7 +393,13 @@ async function applyAction(id) {
 
             // Update form field on the page
             const el = document.querySelector(FIELD_SELECTOR[data.field]);
-            if (el) el.value = data.value;
+            if (el) {
+                if (el.type === 'checkbox') {
+                    el.checked = data.value.trim().toLowerCase() === 'true';
+                } else {
+                    el.value = data.value;
+                }
+            }
 
             btns.innerHTML = `
                 <span class="text-xs text-green-600 font-medium">✅ 已应用</span>
@@ -360,7 +435,13 @@ async function undoAction(id) {
 
             // Restore form field
             const el = document.querySelector(FIELD_SELECTOR[data.field]);
-            if (el) el.value = data.oldValue;
+            if (el) {
+                if (el.type === 'checkbox') {
+                    el.checked = data.oldValue.trim().toLowerCase() === 'true';
+                } else {
+                    el.value = data.oldValue;
+                }
+            }
 
             btns.innerHTML = `
                 <span class="text-xs text-gray-500">↩️ 已撤销</span>

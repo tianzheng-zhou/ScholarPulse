@@ -56,6 +56,13 @@ async def save_settings(
     ss_enabled: bool = Form(False),
     arxiv_enabled: bool = Form(False),
     arxiv_categories: str = Form(""),
+    openalex_enabled: bool = Form(False),
+    openalex_email: str = Form(""),
+    ieee_enabled: bool = Form(False),
+    crossref_enabled: bool = Form(False),
+    crossref_email: str = Form(""),
+    rss_enabled: bool = Form(False),
+    rss_feeds: str = Form(""),
     llm_base_url: str = Form(""),
     llm_model: str = Form(""),
     llm_max_concurrent: int = Form(5),
@@ -64,24 +71,58 @@ async def save_settings(
     fetch_days: int = Form(3),
 ):
     """保存设置"""
+    from ..config import SourceConfig
+
     config = load_config()
 
     config.research_description = research_description
     config.keywords = [k.strip() for k in keywords.split("\n") if k.strip()]
 
-    # 数据源
+    # 数据源 — Semantic Scholar
     if "semantic_scholar" not in config.sources:
-        from ..config import SourceConfig
         config.sources["semantic_scholar"] = SourceConfig()
     config.sources["semantic_scholar"].enabled = ss_enabled
 
+    # 数据源 — arXiv
     if "arxiv" not in config.sources:
-        from ..config import SourceConfig
         config.sources["arxiv"] = SourceConfig()
     config.sources["arxiv"].enabled = arxiv_enabled
     config.sources["arxiv"].categories = [
         c.strip() for c in arxiv_categories.split("\n") if c.strip()
     ]
+
+    # 数据源 — OpenAlex
+    if "openalex" not in config.sources:
+        config.sources["openalex"] = SourceConfig()
+    config.sources["openalex"].enabled = openalex_enabled
+    config.sources["openalex"].email = openalex_email.strip()
+
+    # 数据源 — IEEE Xplore
+    if "ieee_xplore" not in config.sources:
+        config.sources["ieee_xplore"] = SourceConfig()
+    config.sources["ieee_xplore"].enabled = ieee_enabled
+
+    # 数据源 — CrossRef
+    if "crossref" not in config.sources:
+        config.sources["crossref"] = SourceConfig()
+    config.sources["crossref"].enabled = crossref_enabled
+    config.sources["crossref"].email = crossref_email.strip()
+
+    # 数据源 — RSS
+    if "rss" not in config.sources:
+        config.sources["rss"] = SourceConfig()
+    config.sources["rss"].enabled = rss_enabled
+    feeds: list[dict[str, str]] = []
+    for line in rss_feeds.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if "|" in line:
+            name, url = line.split("|", 1)
+            feeds.append({"name": name.strip(), "url": url.strip()})
+        else:
+            feeds.append({"name": line, "url": line})
+    config.sources["rss"].feeds = feeds
 
     # LLM
     config.llm.base_url = llm_base_url
@@ -216,8 +257,13 @@ ASSISTANT_SYSTEM_PROMPT = """\
      - "30 9 * * 1" — 每周一 9:30
    - 常见错误：写成 6 段式（含秒）、星期用 7 表示周日（应为 0）
 
-5. 其他设置（用户可能询问但不可通过操作块修改）
-   - 数据源开关：勾选启用 Semantic Scholar 和/或 arXiv
+5. 数据源开关
+   - 可用数据源：semantic_scholar, arxiv, openalex, ieee_xplore, crossref, rss
+   - 通过操作块可以切换各数据源的启用/禁用状态
+   - 也可以修改 openalex_email、crossref_email
+   - rss_feeds 格式：每行一条 "名称|URL"，多条用 \n 分隔
+
+6. 其他设置
    - LLM 配置：API Base URL 和模型名称，默认使用阿里云百炼 qwen3.5-plus
    - API Key：在项目根目录的 .env 文件中设置 DASHSCOPE_API_KEY
    - 抓取天数：每次拓取过去几天的论文，默认 3 天
@@ -244,6 +290,16 @@ ASSISTANT_SYSTEM_PROMPT = """\
 - keywords — 搜索关键词（多个关键词用 \n 分隔）
 - arxiv_categories — arXiv 分类（多个分类用 \n 分隔）
 - scheduler_cron — Cron 定时表达式
+- source_semantic_scholar — 启用/禁用 Semantic Scholar（value: "true" 或 "false"）
+- source_arxiv — 启用/禁用 arXiv（value: "true" 或 "false"）
+- source_openalex — 启用/禁用 OpenAlex（value: "true" 或 "false"）
+- source_ieee_xplore — 启用/禁用 IEEE Xplore（value: "true" 或 "false"）
+- source_crossref — 启用/禁用 CrossRef（value: "true" 或 "false"）
+- source_rss — 启用/禁用 RSS（value: "true" 或 "false"）
+- openalex_email — OpenAlex 邮箱
+- crossref_email — CrossRef 邮箱
+- rss_feeds — RSS 源列表（每行格式：名称|URL，用 \n 分隔）
+- fetch_days — 每次抓取天数（整数）
 
 每个字段输出一个操作块。可同时输出多个操作块修改不同字段。
 value 中的换行用 \n 表示（JSON 转义）。
@@ -254,6 +310,16 @@ def _build_config_context(config: AppConfig) -> str:
     """将完整配置序列化为 XML 上下文供 AI 助手参考"""
     ss = config.sources.get("semantic_scholar")
     arxiv = config.sources.get("arxiv")
+    openalex = config.sources.get("openalex")
+    ieee = config.sources.get("ieee_xplore")
+    crossref = config.sources.get("crossref")
+    rss = config.sources.get("rss")
+
+    # RSS feeds
+    rss_feeds_str = "无"
+    if rss and rss.feeds:
+        rss_feeds_str = chr(10).join(f"    {f.get('name', f.get('url', ''))}|{f.get('url', '')}" for f in rss.feeds)
+
     return (
         "<current_settings>\n"
         f"<research_description>{config.research_description or '未填写'}</research_description>\n"
@@ -263,6 +329,12 @@ def _build_config_context(config: AppConfig) -> str:
         f"  <arxiv enabled=\"{arxiv.enabled if arxiv else False}\">\n"
         f"    <categories>{chr(10).join(arxiv.categories) if arxiv and arxiv.categories else '无'}</categories>\n"
         f"  </arxiv>\n"
+        f"  <openalex enabled=\"{openalex.enabled if openalex else False}\" email=\"{openalex.email if openalex else ''}\" />\n"
+        f"  <ieee_xplore enabled=\"{ieee.enabled if ieee else False}\" />\n"
+        f"  <crossref enabled=\"{crossref.enabled if crossref else False}\" email=\"{crossref.email if crossref else ''}\" />\n"
+        f"  <rss enabled=\"{rss.enabled if rss else False}\">\n"
+        f"    <feeds>\n{rss_feeds_str}\n    </feeds>\n"
+        f"  </rss>\n"
         "</sources>\n"
         "<llm>\n"
         f"  <base_url>{config.llm.base_url}</base_url>\n"
@@ -279,7 +351,12 @@ def _build_config_context(config: AppConfig) -> str:
 
 
 # 允许 AI 助手修改的字段白名单
-ALLOWED_FIELDS = {"research_description", "keywords", "arxiv_categories", "scheduler_cron"}
+ALLOWED_FIELDS = {
+    "research_description", "keywords", "arxiv_categories", "scheduler_cron",
+    "source_semantic_scholar", "source_arxiv", "source_openalex",
+    "source_ieee_xplore", "source_crossref", "source_rss",
+    "openalex_email", "crossref_email", "rss_feeds", "fetch_days",
+}
 
 
 class ChatMessage(BaseModel):
@@ -373,6 +450,60 @@ async def apply_setting_action(body: ApplyActionRequest):
     elif body.field == "scheduler_cron":
         old_value = config.scheduler.cron
         config.scheduler.cron = body.value.strip()
+
+    elif body.field.startswith("source_"):
+        source_key = body.field[len("source_"):]
+        src = config.sources.get(source_key)
+        if not src:
+            from ..config import SourceConfig
+            src = SourceConfig()
+            config.sources[source_key] = src
+        old_value = str(src.enabled).lower()
+        src.enabled = body.value.strip().lower() == "true"
+
+    elif body.field == "openalex_email":
+        src = config.sources.get("openalex")
+        if not src:
+            from ..config import SourceConfig
+            src = SourceConfig()
+            config.sources["openalex"] = src
+        old_value = src.email or ""
+        src.email = body.value.strip()
+
+    elif body.field == "crossref_email":
+        src = config.sources.get("crossref")
+        if not src:
+            from ..config import SourceConfig
+            src = SourceConfig()
+            config.sources["crossref"] = src
+        old_value = src.email or ""
+        src.email = body.value.strip()
+
+    elif body.field == "rss_feeds":
+        src = config.sources.get("rss")
+        if not src:
+            from ..config import SourceConfig
+            src = SourceConfig()
+            config.sources["rss"] = src
+        old_value = "\n".join(f"{f.get('name', '')}|{f.get('url', '')}" for f in (src.feeds or []))
+        feeds: list[dict[str, str]] = []
+        for line in body.value.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if "|" in line:
+                name, url = line.split("|", 1)
+                feeds.append({"name": name.strip(), "url": url.strip()})
+            else:
+                feeds.append({"name": line, "url": line})
+        src.feeds = feeds
+
+    elif body.field == "fetch_days":
+        old_value = str(config.scheduler.fetch_days)
+        try:
+            config.scheduler.fetch_days = int(body.value.strip())
+        except ValueError:
+            return {"success": False, "error": "抓取天数必须为整数"}
 
     save_config(config)
     return {"success": True, "old_value": old_value}

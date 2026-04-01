@@ -74,7 +74,7 @@ class SemanticScholarFetcher(BaseFetcher):
         papers: list[RawPaper] = []
         offset = 0
         limit = 100
-        max_retries_429 = 3
+        max_retries = 3
 
         while True:
             params = {
@@ -86,15 +86,31 @@ class SemanticScholarFetcher(BaseFetcher):
             }
 
             retries = 0
+            resp = None
             while True:
                 resp = await client.get(f"{API_BASE}/paper/search", params=params)
                 if resp.status_code == 429:
                     retries += 1
-                    if retries > max_retries_429:
+                    if retries > max_retries:
                         logger.error("Semantic Scholar 达到最大重试次数，跳过关键词 '%s'", keyword)
                         return papers
-                    logger.warning("Semantic Scholar 速率限制，等待 60 秒 (%d/%d)", retries, max_retries_429)
+                    logger.warning("Semantic Scholar 速率限制，等待 60 秒 (%d/%d)", retries, max_retries)
                     await asyncio.sleep(60)
+                    continue
+                if resp.status_code >= 500:
+                    retries += 1
+                    if retries > max_retries:
+                        logger.warning(
+                            "Semantic Scholar 服务端错误 %d，关键词 '%s' offset=%d 达到最大重试次数，返回已获取的 %d 篇",
+                            resp.status_code, keyword, offset, len(papers),
+                        )
+                        return papers
+                    wait = 5 * retries
+                    logger.warning(
+                        "Semantic Scholar 服务端错误 %d，%d 秒后重试 (%d/%d)",
+                        resp.status_code, wait, retries, max_retries,
+                    )
+                    await asyncio.sleep(wait)
                     continue
                 break
 
